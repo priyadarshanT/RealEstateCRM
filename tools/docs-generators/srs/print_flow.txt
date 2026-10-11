@@ -1,0 +1,6 @@
+<div class="flowp">
+<div class="fx src">Lead sources<br><small>Ads, portals, WhatsApp, website, webhook, Excel</small></div><span>→</span>
+<div class="fx">Leads</div><span>→</span><div class="fx">Assign to agent</div><span>→</span>
+<div class="fx">Calls, tasks, meetings</div><span>→</span><div class="fx">WhatsApp &amp; email</div><span>→</span>
+<div class="fx">Deal on a unit</div><span>→</span><div class="fx">Invoices &amp; payments</div><span>→</span>
+<div class="fx dash">Dashboard &amp; reports<br><small>+ attendance</small></div></div>

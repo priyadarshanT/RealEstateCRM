@@ -1,0 +1,23 @@
+digraph C { rankdir=LR; nodesep=0.25; ranksep=0.45; bgcolor="transparent";
+node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10 penwidth=0 margin="0.12,0.06"];
+edge [fontname="Helvetica" fontsize=8 color="#7b8b95" fontcolor="#36505b" arrowsize=0.6];
+Co [label=<<b>Company</b><br/><font point-size="8">brokerage or agent</font>> fillcolor="#ccefea"];
+U [label=<<b>Users &amp; teams</b><br/><font point-size="8">roles, permissions</font>> fillcolor="#ccefea"];
+Src [label=<<b>Lead sources</b><br/><font point-size="8">Meta, portals, webhook</font>> fillcolor="#e3e7ea"];
+Cp [label=<<b>Campaigns</b><br/><font point-size="8">ad spend, events</font>> fillcolor="#dce6fb"];
+L [label=<<b>Lead</b><br/><font point-size="8">one buyer</font>> fillcolor="#3b6fe0" fontcolor="white"];
+En [label=<<b>Enquiries</b><br/><font point-size="8">each time they ask</font>> fillcolor="#dce6fb"];
+H [label=<<b>History</b><br/><font point-size="8">stages, owners, shares</font>> fillcolor="#dce6fb"];
+T [label=<<b>Calls, tasks,<br/>meetings</b>> fillcolor="#ebe3fd"];
+M [label=<<b>WhatsApp &amp;<br/>email</b>> fillcolor="#d8f1e3"];
+P [label=<<b>Projects &amp; units</b><br/><font point-size="8">developer, building</font>> fillcolor="#fdeccc"];
+D [label=<<b>Deal</b><br/><font point-size="8">EOI → booking → sold</font>> fillcolor="#e39a00" fontcolor="white"];
+I [label=<<b>Invoices &amp;<br/>payments</b>> fillcolor="#f6d6d3"];
+A [label=<<b>Attendance<br/>&amp; leave</b>> fillcolor="#d5dfe2"];
+S [label=<<b>Subscription</b><br/><font point-size="8">plan, seats, billing</font>> fillcolor="#f6d3e3"];
+Co->S [label="pays for"]; S->U [label="limits seats"];
+Co->U [label="employs"]; Src->L [label="creates"]; Cp->L [label="brings"];
+U->L [label="owns / shared"]; L->En [label="has many"]; L->H [label="records"];
+L->T [label="has"]; L->M [label="has"]; L->D [label="becomes"]; P->D [label="unit sold in"];
+D->I [label="billed by"]; U->A [label="checks in"];
+}

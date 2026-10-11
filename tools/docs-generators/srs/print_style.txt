@@ -1,0 +1,18 @@
+<style>
+.flowp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0}
+.flowp .fx{background:#dff3f1;color:#0d5c55;border:1px solid #9fd9d1;border-radius:8px;padding:8px 10px;font-weight:700;font-size:12.5px;text-align:center}
+.flowp .fx small{font-weight:500;color:#36505b;font-size:10.5px}.flowp .src{background:#fff1d6;color:#7a4b00;border-color:#ffd38a}.flowp .dash{background:#e1ecff;color:#1f4fbf;border-color:#b8cdf7}
+.flowp>span{color:#0d9488;font-weight:800}
+@page{size:A4;margin:14mm 12mm}
+:root{--bg:#fff;--surface:#fff;--ink:#16232b;--muted:#5d6d78;--line:#dfe5e8;color-scheme:light}
+body{padding:0;font-size:12.5px}
+.doc{padding:0;max-width:none}.doc>*:not(figure){max-width:none}
+h2{break-after:avoid;margin-top:26px}
+figure.wf{break-inside:avoid;page-break-inside:avoid}
+.frame{overflow:visible;padding:10px}
+.app{zoom:.74;min-width:900px}
+.duo{zoom:.62;min-width:1120px}.duo .app{zoom:1}
+.doc table{display:table;font-size:11.5px}
+.doc table tr{break-inside:avoid}
+.cover{border-bottom:3px solid #0d8a80;padding-bottom:10px;margin-bottom:6px}
+</style>

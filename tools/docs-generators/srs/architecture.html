@@ -1,0 +1,284 @@
+<title>CRM Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: reading column; diagrams sit in wide scrollable frames on a fixed light canvas */
+:root{--bg:#f5f7f8;--surface:#fff;--ink:#16232b;--muted:#5d6d78;--line:#dfe5e8;--accent:#0d8a80;
+ --sans:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f171c;--surface:#16222a;--ink:#e5edf1;--muted:#98a9b3;--line:#27353e;--accent:#45c4b8;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f171c;--surface:#16222a;--ink:#e5edf1;--muted:#98a9b3;--line:#27353e;--accent:#45c4b8;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding-inline:16px}
+.doc{max-width:1120px;margin:0 auto;padding-block:36px 72px}
+.doc>p,.doc>ol,.doc>ul,.doc>h1,.doc>h2,.doc>h3,.doc>.tw{max-width:860px}
+h1{font-size:clamp(26px,4vw,34px);line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:21px;margin:44px 0 10px;padding-top:18px;border-top:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 6px}
+.sub{color:var(--muted);margin:0}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.tw{overflow-x:auto}
+table.t{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface);border:1px solid var(--line)}
+table.t th,table.t td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.t th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+ol,ul{padding-left:22px} li{margin:3px 0}
+/* diagram canvas: fixed light palette */
+.fig{margin:16px 0 6px}
+.cv{overflow-x:auto;background:#eef2f4;border:1px solid var(--line);border-radius:12px;padding:16px}
+.cap{color:var(--muted);font-size:13.5px;margin:6px 0 0;max-width:860px}
+.d{min-width:1000px;color:#1d2a33;font-size:12.5px;line-height:1.35;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:10px;align-items:stretch}
+.zone{border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;border:2px solid}
+.zt{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.b{background:#fff;border-radius:8px;padding:7px 9px;border:1px solid #d6e0e5;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.b b{display:block;font-size:12.5px}.b small{color:#5d6d78;font-size:11px}
+.b .m{font-family:var(--mono);font-size:10.5px;color:#0f5c52}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.z-user{border-color:#9db4f2;background:#e8efff}.z-user .zt{color:#2a4fb5}
+.z-edge{border-color:#ffc56b;background:#fff5e2}.z-edge .zt{color:#8a5500}
+.z-aws{border-color:#0d9488;background:#e3f5f2}.z-aws .zt{color:#0b6b62}
+.z-az{border-color:#7cc9c0;background:#f3fbfa;border-style:dashed}.z-az .zt{color:#0b6b62}
+.z-db{border-color:#8b5cf6;background:#f1eaff}.z-db .zt{color:#5b2bb5}
+.z-ext{border-color:#e98a7d;background:#ffefec}.z-ext .zt{color:#a63526}
+.z-ops{border-color:#9aa8b1;background:#f1f4f6}.z-ops .zt{color:#46555e}
+.z-shared{border-color:#3b82f6;background:#eaf2ff}.z-shared .zt{color:#1d4ed8}
+.arr{display:flex;align-items:center;justify-content:center;color:#0d7a71;font-weight:800;font-size:12px;gap:6px;white-space:nowrap}
+.arr.v{flex-direction:column;padding:2px 0}
+.arr i{font-style:normal;font-size:18px;line-height:1}
+.lbl{font-size:10.5px;color:#46555e;font-weight:600;background:#fff;border:1px solid #d6e0e5;border-radius:99px;padding:1px 8px}
+.ctr{background:#0f3b45;color:#fff;border-radius:8px;padding:7px 9px}.ctr b{display:block}.ctr small{color:#bfe3e0;font-size:10.5px}
+.ctr.w{background:#1b5e6a}.ctr.k{background:#0d9488}.ctr.p{background:#5b6b75}.ctr.c{background:#b7791f}
+.step{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.num{width:28px;height:28px;border-radius:50%;background:#0d9488;color:#fff;font-weight:800;display:grid;place-items:center;font-size:12px}
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.fl{background:#fff;border:1px solid #d6e0e5;border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:4px;position:relative}
+.fl .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#0b6b62}
+.fl small{color:#5d6d78}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:12px;height:12px;border-radius:3px;display:inline-block;border:2px solid}
+@page{size:A3 landscape;margin:12mm}
+@media print{:root{--bg:#fff;--surface:#fff;--ink:#16232b;--muted:#5d6d78;--line:#dfe5e8;color-scheme:light}body{padding:0;font-size:12px}.doc{padding:0;max-width:none}.doc>p,.doc>ol,.doc>ul,.doc>h1,.doc>h2,.doc>h3,.doc>.tw{max-width:none}.fig{break-inside:avoid}h2{break-after:avoid}.cv{overflow:visible}.d{zoom:.86}table.t tr{break-inside:avoid}}
+</style>
+<div class="doc">
+<h1>Architecture and block diagrams</h1>
+<p class="sub">Dubai Real Estate CRM · Document 02 · Version 1.2 · 11 October 2026 · Matches SRS v1.2 (adds subscriptions, billing and owner console)</p>
+
+<h2 class="first">1. The system at a glance</h2>
+<p>Users open one web app on computer or phone. Every request goes through Cloudflare, which forwards it to one of two identical app servers in the AWS UAE region. Both servers share one PostgreSQL database that has a live standby copy. Outside services (Meta, WhatsApp, Property Finder, Bayut, Dubizzle, the general webhook, Stripe for subscription payments) send data in through webhooks and receive calls from our background worker. Our own team runs the business from a separate owner console with its own login.</p>
+
+<div class="fig"><div class="cv"><div class="d">
+ <div class="zone z-user"><div class="zt">Users</div><div class="grid4">
+  <div class="b"><b>Web browser</b><small>Director, managers, agents, admin, finance</small></div>
+  <div class="b"><b>Phone (installable web app)</b><small>Agents on the move · attendance camera</small></div>
+  <div class="b"><b>Clients</b><small>CRM booking page · WhatsApp · email</small></div>
+  <div class="b"><b>Outside systems</b><small>Send leads and status updates by webhook</small></div></div></div>
+ <div class="arr v"><i>↓</i><span class="lbl">HTTPS only</span></div>
+ <div class="zone z-edge"><div class="zt">Cloudflare (free plan) · edge</div><div class="grid5">
+  <div class="b"><b>DNS + SSL</b><small>crm.example.ae</small></div>
+  <div class="b"><b>Firewall + DDoS</b><small>Blocks attacks, rate limits login and webhooks</small></div>
+  <div class="b"><b>CDN cache</b><small>App files, images</small></div>
+  <div class="b"><b>Cloudflare Tunnel</b><small>Sends traffic to a healthy server; servers have no open ports</small></div>
+  <div class="b"><b>Health checks</b><small>Stops sending to a failed server</small></div></div></div>
+ <div class="arr v"><i>↓</i><span class="lbl">Encrypted tunnel (outbound from each server)</span></div>
+ <div class="zone z-aws"><div class="zt">AWS · Middle East (UAE) region · me-central-1 · one VPC</div>
+  <div class="row">
+   <div class="zone z-az" style="flex:1"><div class="zt">Data centre A (zone 1)</div>
+    <div class="b" style="background:#f7fffe"><b>App server A · EC2 t4g.small (2 vCPU, 2 GB) · Docker</b>
+     <div class="grid5" style="margin-top:6px"><div class="ctr"><b>web</b><small>Next.js screens</small></div><div class="ctr w"><b>api</b><small>NestJS REST API</small></div><div class="ctr k"><b>worker</b><small>Background jobs</small></div><div class="ctr p"><b>gotenberg</b><small>PDF maker</small></div><div class="ctr c"><b>cloudflared</b><small>Tunnel</small></div></div></div></div>
+   <div class="zone z-az" style="flex:1"><div class="zt">Data centre B (zone 2)</div>
+    <div class="b" style="background:#f7fffe"><b>App server B · identical copy</b>
+     <div class="grid5" style="margin-top:6px"><div class="ctr"><b>web</b><small>Next.js screens</small></div><div class="ctr w"><b>api</b><small>NestJS REST API</small></div><div class="ctr k"><b>worker</b><small>Background jobs</small></div><div class="ctr p"><b>gotenberg</b><small>PDF maker</small></div><div class="ctr c"><b>cloudflared</b><small>Tunnel</small></div></div></div></div>
+  </div>
+  <div class="arr v"><i>↓</i><span class="lbl">SQL over TLS · private network</span></div>
+  <div class="row">
+   <div class="zone z-db" style="flex:1.3"><div class="zt">Database · Amazon RDS PostgreSQL 16 · Multi-AZ</div><div class="grid2">
+    <div class="b"><b>Primary (zone 1)</b><small>All reads and writes · job queue tables (pg-boss) · row-level security per tenant</small></div>
+    <div class="b"><b>Standby (zone 2)</b><small>Live copy · takes over automatically in 1–2 min</small></div></div>
+    <div class="b"><small>Automated backups · point-in-time restore 14 days · encrypted</small></div></div>
+   <div class="zone z-shared" style="flex:1.7"><div class="zt">AWS services used by the servers</div><div class="grid3">
+    <div class="b"><b>S3</b><small>Files: brochures, floor plans, invoice PDFs, attendance photos, exports. Private, encrypted.</small></div>
+    <div class="b"><b>Cognito</b><small>Login + two-factor (authenticator app). Issues tokens checked by api.</small></div>
+    <div class="b"><b>SES</b><small>Send email · receive portal lead emails</small></div>
+    <div class="b"><b>SSM Parameter Store</b><small>Secrets and integration tokens</small></div>
+    <div class="b"><b>CloudWatch</b><small>Logs, metrics, alarms</small></div>
+    <div class="b"><b>ECR</b><small>Docker images for deployment</small></div></div></div>
+  </div></div>
+ <div class="row">
+  <div class="zone z-ext" style="flex:2"><div class="zt">Outside services · connected by the worker and webhooks</div><div class="grid6">
+   <div class="b"><b>Meta</b><small>Lead ads, spend</small></div><div class="b"><b>WhatsApp</b><small>Cloud API, direct with Meta</small></div><div class="b"><b>Google Ads</b><small>Leads, spend</small></div><div class="b"><b>LinkedIn · TikTok · Snapchat</b><small>Lead forms</small></div><div class="b"><b>Property Finder · Bayut · Dubizzle</b><small>Portal leads</small></div><div class="b"><b>General webhook</b><small>Website, Google Sheets, Excel, any tool</small></div>
+   <div class="b"><b>Google Workspace</b><small>Calendar sync, Meet links</small></div><div class="b"><b>Microsoft 365</b><small>Calendar, Teams links, mail</small></div><div class="b"><b>Gmail</b><small>Agent mailbox</small></div><div class="b"><b>AWS SES</b><small>System email</small></div><div class="b"><b>Ad spend APIs</b><small>Meta, Google, others</small></div><div class="b"><b>Firebase</b><small>Push notifications</small></div><div class="b"><b>Stripe</b><small>Subscription cards, invoices, payment webhooks</small></div></div></div>
+  <div class="zone z-ops" style="flex:1"><div class="zt">Build and monitoring</div><div class="grid2">
+   <div class="b"><b>GitHub</b><small>Code + Actions CI/CD</small></div><div class="b"><b>Terraform</b><small>Infrastructure as code</small></div>
+   <div class="b"><b>Sentry</b><small>Error tracking</small></div><div class="b"><b>Better Stack</b><small>Uptime checks</small></div></div></div>
+ </div>
+</div></div>
+<div class="legend"><span><i style="border-color:#9db4f2;background:#e8efff"></i>Users</span><span><i style="border-color:#ffc56b;background:#fff5e2"></i>Cloudflare edge</span><span><i style="border-color:#0d9488;background:#e3f5f2"></i>AWS UAE</span><span><i style="border-color:#8b5cf6;background:#f1eaff"></i>Database</span><span><i style="border-color:#3b82f6;background:#eaf2ff"></i>AWS managed services</span><span><i style="border-color:#e98a7d;background:#ffefec"></i>Outside services</span><span><i style="border-color:#9aa8b1;background:#f1f4f6"></i>Build and monitoring</span></div>
+<p class="cap">Figure 1. Complete system. All personal and financial data stays in the AWS UAE region.</p></div>
+
+<h2>2. What runs on each app server</h2>
+<p>Both servers run the same five Docker containers. The servers are interchangeable: any request can go to either one, because nothing is stored on the server itself.</p>
+<div class="tw"><table class="t">
+<tr><th>Container</th><th>Technology</th><th>What it does</th><th>Talks to</th></tr>
+<tr><td><b>web</b></td><td>Next.js 15, React, TypeScript</td><td>Serves all screens. Installable on phones (PWA). Calls the api; never the database directly.</td><td>api</td></tr>
+<tr><td><b>api</b></td><td>NestJS, Node.js 22, TypeScript</td><td>REST API at <code>/api/v1</code>. Checks login token, tenant and permission on every request. Receives webhooks at <code>/webhooks/*</code>. Publishes Swagger docs.</td><td>PostgreSQL, S3, Cognito, SES</td></tr>
+<tr><td><b>worker</b></td><td>NestJS (same code, worker mode)</td><td>Runs background jobs from the pg-boss queue: process incoming leads, send messages, reminders, the 10-minute rule, syncs, exports, dashboard refresh.</td><td>PostgreSQL, S3, outside services, gotenberg</td></tr>
+<tr><td><b>gotenberg</b></td><td>Gotenberg 8</td><td>Turns invoice and purchase-order HTML into PDF. Internal only.</td><td>worker</td></tr>
+<tr><td><b>cloudflared</b></td><td>Cloudflare Tunnel client</td><td>Opens an outbound tunnel to Cloudflare so no inbound port is open on the server.</td><td>web, api</td></tr>
+</table></div>
+<p>Jobs are claimed from the database queue with row locking, so running the worker on both servers never processes the same job twice.</p>
+
+<h2>3. Inside the backend: modules</h2>
+<p>The api and worker are one NestJS codebase split into modules. Each module owns its own tables and exposes a service to other modules. A module never reads or writes another module's tables directly.</p>
+<div class="fig"><div class="cv"><div class="d">
+ <div class="zone z-user"><div class="zt">Entry points</div><div class="grid4">
+  <div class="b"><b>REST controllers</b><small class="m">/api/v1/*</small></div><div class="b"><b>Webhook controllers</b><small class="m">/webhooks/{provider}</small></div><div class="b"><b>Job handlers</b><small class="m">pg-boss queues</small></div><div class="b"><b>Scheduled jobs</b><small class="m">cron (every 1–5 min, nightly, weekly)</small></div></div></div>
+ <div class="arr v"><i>↓</i></div>
+ <div class="zone z-edge"><div class="zt">Request guards (run on every request, in this order)</div><div class="grid5">
+  <div class="b"><b>1 · Auth guard</b><small>Validate Cognito token</small></div><div class="b"><b>2 · Tenant context</b><small>Sets tenant for row-level security</small></div><div class="b"><b>3 · Permission guard</b><small>Role + action check</small></div><div class="b"><b>4 · Scope filter</b><small>Own / team / division / company</small></div><div class="b"><b>5 · Validation</b><small>Input checked against schema; then subscription guard: read-only company → 402 on any change</small></div></div></div>
+ <div class="arr v"><i>↓</i></div>
+ <div class="zone z-aws"><div class="zt">Business modules</div><div class="grid6">
+  <div class="b"><b>leads</b><small>Leads, enquiries, re-enquiry, stages, history, sharing</small></div>
+  <div class="b"><b>assignment</b><small>Round-robin, rules, availability, unassigned queue</small></div>
+  <div class="b"><b>scoring</b><small>Lead score (best leads first)</small></div>
+  <div class="b"><b>tasks</b><small>Calls, meetings, viewings, reminders, 10-minute rule</small></div>
+  <div class="b"><b>calendar</b><small>Booking page, Meet / Teams links, Google &amp; Microsoft sync, double-booking check</small></div>
+  <div class="b"><b>messaging</b><small>WhatsApp, email, templates, consent, opt-out</small></div>
+  <div class="b"><b>campaigns</b><small>Bulk audiences, approval, sending, results</small></div>
+  <div class="b"><b>projects</b><small>Developers, projects, buildings, units, price history</small></div>
+  <div class="b"><b>deals</b><small>Lead + unit: offer, EOI, booking, sale</small></div>
+  <div class="b"><b>finance</b><small>Invoices, POs, payments, commissions, numbering</small></div>
+  <div class="b"><b>attendance</b><small>Check-in/out, policy, leave, corrections</small></div>
+  <div class="b"><b>reports</b><small>Reports, exports, export log, reconciliation</small></div>
+  <div class="b"><b>dashboard</b><small>KPIs and charts from summary views</small></div>
+  <div class="b"><b>integrations</b><small>Connections, adapters per provider, sync logs, retries</small></div>
+  <div class="b"><b>organization</b><small>Tenants, users, roles, permissions, teams, divisions</small></div>
+  <div class="b"><b>settings</b><small>Stages, reasons, rules, alerts, numbering, currencies</small></div>
+  <div class="b"><b>events</b><small>Events and roadshows</small></div>
+  <div class="b"><b>notifications</b><small>In-app and push (Firebase)</small></div>
+  <div class="b"><b>billing</b><small>Plans, sign-up, trials, seats, Stripe, our VAT invoices, grace / read-only</small></div>
+  <div class="b"><b>platform</b><small>Owner console: companies, licence checks, bank transfers, plans, metrics</small></div></div></div>
+ <div class="arr v"><i>↓</i></div>
+ <div class="zone z-shared"><div class="zt">Shared core (used by all modules)</div><div class="grid6">
+  <div class="b"><b>database</b><small>Drizzle ORM, transactions, tenant-scoped connection</small></div>
+  <div class="b"><b>queue</b><small>pg-boss wrapper (swap to Redis/SQS later)</small></div>
+  <div class="b"><b>files</b><small>S3 upload/download links</small></div>
+  <div class="b"><b>audit</b><small>Writes audit log for every change</small></div>
+  <div class="b"><b>events bus</b><small>In-process domain events, e.g. <span class="m">lead.created</span></small></div>
+  <div class="b"><b>config</b><small>Environment and secrets from SSM</small></div></div></div>
+</div></div><p class="cap">Figure 2. Backend layers. Modules talk to each other through services and domain events, never through each other's tables.</p></div>
+
+<h3>Domain events between modules</h3>
+<div class="tw"><table class="t">
+<tr><th>Event</th><th>Published by</th><th>Handled by</th></tr>
+<tr><td><code>lead.created</code></td><td>leads</td><td>assignment (assign owner), scoring (first score), notifications</td></tr>
+<tr><td><code>lead.re_enquired</code></td><td>leads</td><td>notifications ("Re-enquired" to the same agent), scoring, dashboard</td></tr>
+<tr><td><code>lead.no_response</code></td><td>tasks</td><td>assignment (next agent or Admin), notifications</td></tr>
+<tr><td><code>lead.shared</code></td><td>leads</td><td>notifications, audit</td></tr>
+<tr><td><code>lead.assigned</code></td><td>assignment</td><td>tasks (start 10-minute timer), notifications</td></tr>
+<tr><td><code>lead.stage_changed</code></td><td>leads</td><td>scoring, dashboard, audit</td></tr>
+<tr><td><code>message.received</code></td><td>messaging</td><td>leads (timeline), scoring, tasks (stops the 10-minute timer), notifications</td></tr>
+<tr><td><code>meeting.booked / changed / cancelled</code></td><td>calendar</td><td>leads (timeline, stage), tasks, messaging (confirmation)</td></tr>
+<tr><td><code>deal.updated</code></td><td>deals</td><td>projects (unit status), leads (timeline)</td></tr>
+<tr><td><code>invoice.approved / payment.recorded</code></td><td>finance</td><td>leads (timeline), dashboard</td></tr>
+<tr><td><code>leave.approved</code></td><td>attendance</td><td>assignment (skip on leave days)</td></tr>
+<tr><td><code>user.receives_leads_changed</code></td><td>organization</td><td>assignment (include / skip user)</td></tr>
+<tr><td><code>tenant.signed_up</code></td><td>billing</td><td>organization (create company, Admin, default roles and settings), notifications (welcome email)</td></tr>
+<tr><td><code>subscription.status_changed</code></td><td>billing</td><td>organization (read-only / active), notifications (banner, emails), platform (metrics)</td></tr>
+<tr><td><code>user.activated</code></td><td>organization</td><td>billing (seat count; the database also blocks going over the paid seats)</td></tr>
+</table></div>
+
+<h2>4. How a new lead flows through the system</h2>
+<p>Example: a person fills a Meta lead form. The same path is used for every source; only the adapter in step 3 changes.</p>
+<div class="fig"><div class="cv"><div class="d">
+ <div class="flow">
+  <div class="fl"><span class="k">1 · RECEIVE</span><b>Meta calls our webhook</b><small class="m">POST /webhooks/meta</small><small>Signature checked. Event saved to <span class="m">webhook_events</span>. Reply 200 in under 1 s.</small></div>
+  <div class="fl"><span class="k">2 · QUEUE</span><b>Job created</b><small class="m">queue: lead-intake</small><small>Duplicate event IDs ignored (idempotent).</small></div>
+  <div class="fl"><span class="k">3 · FETCH</span><b>Meta adapter</b><small>Worker fetches full form answers and campaign, ad set, ad, form IDs from Meta API.</small></div>
+  <div class="fl"><span class="k">4 · SAVE</span><b>Inquiry + lead</b><small>Phone to E.164, email lower case. Inquiry saved with original answers. New lead created, or enquiry added to the existing lead (re-enquiry → same agent, notified).</small></div>
+  <div class="fl"><span class="k">5 · ASSIGN</span><b>Assignment rules</b><small>Rules top to bottom, round-robin, skip unavailable. No match → Unassigned.</small></div>
+  <div class="fl"><span class="k">6 · SCORE</span><b>First score</b><small>Budget, project, source quality.</small></div>
+  <div class="fl"><span class="k">7 · NOTIFY</span><b>Agent alerted</b><small>In-app + push. Welcome WhatsApp sent (P2).</small></div>
+  <div class="fl"><span class="k">8 · WATCH</span><b>Timers start</b><small>10-minute timer starts (next agent, then Admin).</small></div>
+ </div>
+ <div class="b"><small><b>If any step fails:</b> the job retries 5 times with increasing delay, then is marked failed, shows on the Integrations screen and can be retried manually. Nightly Meta reconciliation catches anything missed.</small></div>
+</div></div><p class="cap">Figure 3. Lead intake. Target: lead visible in the CRM within 1 minute.</p></div>
+
+<h2>5. Background jobs</h2>
+<div class="tw"><table class="t">
+<tr><th>Job</th><th>When</th><th>What it does</th></tr>
+<tr><td>lead-intake</td><td>On each webhook / import row</td><td>Steps 3–7 of Figure 3</td></tr>
+<tr><td>send-message</td><td>On send</td><td>Sends WhatsApp or email, stores provider message ID</td></tr>
+<tr><td>message-status</td><td>On provider webhook</td><td>Updates sent / delivered / read / failed / replied</td></tr>
+<tr><td>campaign-dispatch</td><td>At scheduled time</td><td>Sends approved bulk campaign in batches, skips opted-out</td></tr>
+<tr><td>reminders</td><td>Every minute</td><td>Task reminders and overdue alerts</td></tr>
+<tr><td>response-timer</td><td>Every minute</td><td>10-minute rule: lead not acted on moves to the next available agent in the team; when the whole team misses it, it goes back to the Admin</td></tr>
+<tr><td>calendar-sync</td><td>Every 5 minutes + webhooks</td><td>Google / Microsoft calendar sync</td></tr>
+<tr><td>ad-spend-import</td><td>Nightly</td><td>Imports daily spend from Meta and other ad accounts</td></tr>
+<tr><td>meta-reconciliation</td><td>Nightly</td><td>Compares Meta lead IDs with CRM, re-imports missing</td></tr>
+<tr><td>dashboard-refresh</td><td>Every 5 minutes</td><td>Refreshes dashboard summary views</td></tr>
+<tr><td>invoice-overdue</td><td>Nightly</td><td>Marks unpaid invoices past due date as Overdue</td></tr>
+<tr><td>attendance-close-day</td><td>Nightly</td><td>Marks absent users, applies leave and holidays</td></tr>
+<tr><td>report-export</td><td>On request (large exports)</td><td>Builds Excel/CSV, saves to S3, notifies user</td></tr>
+<tr><td>stripe-events</td><td>On Stripe webhook</td><td>Card saved, invoice paid, payment failed: updates subscription, invoice and payment</td></tr>
+<tr><td>billing-dunning</td><td>Hourly</td><td>Trial ending reminders; payment-failed reminders; after 14 days' grace sets the company read-only</td></tr>
+<tr><td>billing-invoices</td><td>Daily</td><td>Issues our VAT invoices for renewals and extra seats (bank-transfer customers); stores the PDF</td></tr>
+<tr><td>tenant-usage</td><td>Nightly</td><td>Daily usage per company for the owner console</td></tr>
+<tr><td>tenant-data-deletion</td><td>Nightly</td><td>Deletes a cancelled company's data 90 days after the end (export offered first)</td></tr>
+</table></div>
+
+<h2>6. Security design</h2>
+<div class="fig"><div class="cv"><div class="d">
+ <div class="row">
+  <div class="zone z-edge" style="flex:1"><div class="zt">Edge</div><div class="b"><small>HTTPS only · Cloudflare firewall and DDoS · rate limits on login and webhooks · no open ports on servers</small></div></div>
+  <div class="arr"><i>→</i></div>
+  <div class="zone z-user" style="flex:1"><div class="zt">Identity</div><div class="b"><small>Cognito login · two-factor required · short-lived access token (1 h) · refresh token</small></div></div>
+  <div class="arr"><i>→</i></div>
+  <div class="zone z-aws" style="flex:1"><div class="zt">Application</div><div class="b"><small>Permission + scope check on every request · input validation · webhook signatures verified</small></div></div>
+  <div class="arr"><i>→</i></div>
+  <div class="zone z-db" style="flex:1"><div class="zt">Data</div><div class="b"><small>Row-level security by tenant · encrypted at rest · audit log append-only · secrets in SSM</small></div></div>
+ </div>
+</div></div><p class="cap">Figure 4. Four layers of protection. A bug in one layer is still stopped by the next.</p></div>
+<ol>
+<li><b>Tenant isolation:</b> every business table has <code>tenant_id</code>. The api opens each transaction with the user's tenant, and PostgreSQL row-level security only returns that tenant's rows.</li>
+<li><b>Files:</b> S3 is private. Users get time-limited download links (5 minutes) only for files they are allowed to see.</li>
+<li><b>Owner console:</b> separate Cognito user pool with two-factor login and a separate database role (<code>crm_platform</code>). It can see plans, seats, payments and usage, but no screen or API shows a company's leads or messages. Every action is logged.</li>
+<li><b>Payments:</b> card details go straight from the browser to Stripe; our servers only keep Stripe IDs and the last 4 digits.</li>
+<li><b>Integration tokens</b> (Meta, WhatsApp, portals, Google, Microsoft…) are stored encrypted in SSM Parameter Store, never in the database or code.</li>
+<li><b>Webhooks</b> are accepted only with a valid provider signature or shared secret.</li>
+</ol>
+
+<h2>7. Technology choices</h2>
+<div class="tw"><table class="t">
+<tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+<tr><td>Screens</td><td>Next.js 15, React, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query, Apache ECharts</td><td>One codebase for desktop and phone; fast, typed, good charts</td></tr>
+<tr><td>Backend</td><td>NestJS on Node.js 22, TypeScript</td><td>Clear module structure; same language as the screens</td></tr>
+<tr><td>Database</td><td>PostgreSQL 16 (Amazon RDS), Drizzle ORM, SQL migrations</td><td>Reliable; row-level security; full-text and fuzzy search; phone/email matching for re-enquiries</td></tr>
+<tr><td>Jobs</td><td>pg-boss (queue inside PostgreSQL)</td><td>No extra server; switchable to Redis or SQS later</td></tr>
+<tr><td>Login</td><td>Amazon Cognito (OIDC)</td><td>Free up to 10,000 users; standard protocol, switchable to Keycloak</td></tr>
+<tr><td>Files</td><td>Amazon S3</td><td>Cheap, private, encrypted</td></tr>
+<tr><td>Email</td><td>Amazon SES</td><td>Low cost; inbound parsing for portal lead emails</td></tr>
+<tr><td>PDF / Excel</td><td>Gotenberg, ExcelJS</td><td>Open source, run on our servers</td></tr>
+<tr><td>Edge</td><td>Cloudflare Free + Tunnel</td><td>Security, SSL, failover between servers at no cost</td></tr>
+<tr><td>Delivery</td><td>Docker, GitHub Actions, Amazon ECR, Terraform</td><td>Repeatable builds and environments</td></tr>
+<tr><td>Monitoring</td><td>CloudWatch, Sentry, Better Stack</td><td>Logs, errors and uptime alerts</td></tr>
+</table></div>
+
+<h2>8. Environments</h2>
+<div class="tw"><table class="t">
+<tr><th></th><th>Staging (test)</th><th>Production (live)</th></tr>
+<tr><td>Servers</td><td>1 × t4g.small, office hours only</td><td>2 × t4g.small in two zones</td></tr>
+<tr><td>Database</td><td>PostgreSQL in Docker on the same server</td><td>RDS PostgreSQL Multi-AZ</td></tr>
+<tr><td>Data</td><td>Test data only</td><td>Real data</td></tr>
+<tr><td>Address</td><td><code>staging.crm.example.ae</code></td><td><code>crm.example.ae</code></td></tr>
+<tr><td>Deploy</td><td>Automatic on merge to <code>main</code></td><td>Manual approval after staging passes</td></tr>
+</table></div>
+
+<h2>9. How it grows (no rewrite)</h2>
+<div class="tw"><table class="t">
+<tr><th>Part</th><th>Today</th><th>When it needs more</th></tr>
+<tr><td>App servers</td><td>2 × t4g.small</td><td>Larger instances, then Auto Scaling 2–6 servers</td></tr>
+<tr><td>Database</td><td>db.t4g.medium Multi-AZ</td><td>Larger instance, read replica for reports; self-managed PostgreSQL at very large scale</td></tr>
+<tr><td>Job queue</td><td>pg-boss</td><td>Redis or Amazon SQS (only the queue wrapper changes)</td></tr>
+<tr><td>Search</td><td>PostgreSQL full-text</td><td>OpenSearch at millions of leads</td></tr>
+<tr><td>Public images</td><td>S3</td><td>Cloudflare R2 (no viewing fees)</td></tr>
+<tr><td>Login</td><td>Cognito</td><td>Keycloak above 10,000 active users</td></tr>
+</table></div>
+</div>

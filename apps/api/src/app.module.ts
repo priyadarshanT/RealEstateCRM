@@ -1,5 +1,11 @@
 import { Module } from '@nestjs/common';
+import { requestGuards } from './core/auth/auth.module';
+import { CoreModule } from './core/core.module';
+import { OrganizationModule } from './modules/organization/organization.module';
 
-// Empty starter. Core (database, auth, errors, logging) and business modules are added step by step.
-@Module({})
+// Composition root: shared core plus one import per business module.
+@Module({
+  imports: [CoreModule, OrganizationModule],
+  providers: [...requestGuards],
+})
 export class AppModule {}

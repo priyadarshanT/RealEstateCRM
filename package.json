@@ -2,10 +2,16 @@
   "name": "realestatecrm",
   "private": true,
   "packageManager": "pnpm@9.15.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm --filter @crm/api dev",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:db": "python db/tests/run_tests.py",
+    "db:migrate": "pnpm --filter @crm/api db:migrate",
+    "api:check": "pnpm --filter @crm/api api:check"
   }
 }

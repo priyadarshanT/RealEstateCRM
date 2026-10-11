@@ -7,6 +7,13 @@ export interface VerifiedToken {
   subject: string;
   tenantId: string;
   email?: string;
+  /** When the user actually signed in (auth_time); unchanged when the token is refreshed. */
+  authTime?: Date;
+}
+
+export function authTimeOf(payload: { auth_time?: unknown; iat?: number }): Date | undefined {
+  const seconds = typeof payload.auth_time === 'number' ? payload.auth_time : payload.iat;
+  return seconds ? new Date(seconds * 1000) : undefined;
 }
 
 /** The signed-in user, resolved once per request and used by every check after login. */

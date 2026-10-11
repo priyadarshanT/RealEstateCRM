@@ -17,6 +17,7 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11",
+    "@nestjs/throttler": "^6",
     "class-transformer": "^0.5",
     "class-validator": "^0.14",
     "drizzle-orm": "^0.44",
@@ -54,6 +55,7 @@
           "tsconfig": "<rootDir>/test/tsconfig.json"
         }
       ]
-    }
+    },
+    "globalSetup": "<rootDir>/test/global-setup.ts"
   }
 }

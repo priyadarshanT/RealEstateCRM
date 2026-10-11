@@ -1,5 +1,5 @@
 import { jwtVerify, SignJWT } from 'jose';
-import { TokenVerifier, VerifiedToken } from './principal';
+import { authTimeOf, TokenVerifier, VerifiedToken } from './principal';
 
 const ISSUER = 'crm-dev';
 const TENANT_CLAIM = 'custom:tenant_id';
@@ -16,7 +16,12 @@ export class DevTokenVerifier implements TokenVerifier {
     const { payload } = await jwtVerify(token, this.key, { issuer: ISSUER, algorithms: ['HS256'] });
     const tenantId = payload[TENANT_CLAIM];
     if (!payload.sub || typeof tenantId !== 'string') throw new Error('token is missing sub or tenant');
-    return { subject: payload.sub, tenantId, email: typeof payload.email === 'string' ? payload.email : undefined };
+    return {
+      subject: payload.sub,
+      tenantId,
+      email: typeof payload.email === 'string' ? payload.email : undefined,
+      authTime: authTimeOf(payload),
+    };
   }
 }
 

@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable, Logger, Optional } f
 import { Reflector } from '@nestjs/core';
 import { DbService } from '../database/db.service';
 import { Problems } from '../errors/problem';
+import { RequestContext } from '../http/request-context';
 import { IS_PUBLIC, REQUIRED_PERMISSION } from './decorators';
 import {
   AuthenticatedRequest,
@@ -45,7 +46,8 @@ export class AuthGuard implements CanActivate {
       throw Problems.unauthorized('The token is invalid or expired.');
     }
 
-    const principal = await this.db.withTenant(claims.tenantId, () => this.resolver.resolve(claims));
+    const info = { requestId: request.requestId, ipAddress: request.ip, userAgent: request.header('user-agent')?.slice(0, 500) };
+    const principal = await RequestContext.run(info, () => this.db.withTenant(claims.tenantId, () => this.resolver.resolve(claims)));
     if (!principal) throw Problems.unauthorized('No active user for this login.');
     if (principal.tenantStatus === 'suspended') throw Problems.tenantSuspended();
     if (principal.tenantStatus === 'closed') throw Problems.forbidden('This company account is closed.');

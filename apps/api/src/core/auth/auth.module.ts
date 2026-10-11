@@ -1,6 +1,7 @@
 import { Global, Module, Provider } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { APP_CONFIG, AppConfig } from '../config/app-config';
+import { RateLimitGuard } from '../http/rate-limit';
 import { CognitoTokenVerifier } from './cognito-token-verifier';
 import { DevTokenVerifier } from './dev-token-verifier';
 import { AuthGuard, PermissionGuard, SubscriptionGuard } from './guards';
@@ -24,10 +25,12 @@ export class AuthModule {}
 
 /**
  * Registered in AppModule (the composition root), where the business modules that implement
- * PRINCIPAL_RESOLVER and SUBSCRIPTION_STATUS are visible. Order: login + tenant, permission, subscription.
+ * PRINCIPAL_RESOLVER and SUBSCRIPTION_STATUS are visible.
+ * Order: login + tenant, rate limit (per user), permission, subscription.
  */
 export const requestGuards: Provider[] = [
   { provide: APP_GUARD, useClass: AuthGuard },
+  { provide: APP_GUARD, useClass: RateLimitGuard },
   { provide: APP_GUARD, useClass: PermissionGuard },
   { provide: APP_GUARD, useClass: SubscriptionGuard },
 ];

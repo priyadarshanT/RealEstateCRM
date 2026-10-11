@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, JWTVerifyGetKey, jwtVerify } from 'jose';
-import { TokenVerifier, VerifiedToken } from './principal';
+import { authTimeOf, TokenVerifier, VerifiedToken } from './principal';
 
 const TENANT_CLAIM = 'custom:tenant_id';
 
@@ -22,6 +22,11 @@ export class CognitoTokenVerifier implements TokenVerifier {
     if (payload.token_use !== 'access' || payload.client_id !== this.clientId) throw new Error('not an access token for this app');
     const tenantId = payload[TENANT_CLAIM];
     if (!payload.sub || typeof tenantId !== 'string') throw new Error('token is missing sub or tenant');
-    return { subject: payload.sub, tenantId, email: typeof payload.email === 'string' ? payload.email : undefined };
+    return {
+      subject: payload.sub,
+      tenantId,
+      email: typeof payload.email === 'string' ? payload.email : undefined,
+      authTime: authTimeOf(payload),
+    };
   }
 }

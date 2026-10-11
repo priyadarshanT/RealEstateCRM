@@ -1,17 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, resetTestLogins, TENANT_A, TENANT_B, tokenFor } from './helpers';
+import { createTestApp, ownerQuery, signIn, TENANT_A, TENANT_B, tokenFor, USERS } from './helpers';
 
-// Runs against the local crm_dev database with the sample data loaded, connected as crm_app.
-describe('login, tenant isolation and GET /me', () => {
+// Login, tenant isolation and GET /me, against crm_test connected as crm_app.
+describe('login and GET /me', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    await resetTestLogins();
     app = await createTestApp();
   });
-
-  afterEach(resetTestLogins);
 
   afterAll(async () => {
     await app.close();
@@ -35,8 +32,8 @@ describe('login, tenant isolation and GET /me', () => {
   });
 
   it('returns the Admin with company scope and export permission', async () => {
-    const token = await tokenFor(TENANT_A, 'admin@a.ae');
-    const res = await request(app.getHttpServer()).get('/api/v1/me').set('Authorization', `Bearer ${token}`).expect(200);
+    const admin = await signIn(app, USERS.adminA);
+    const res = await admin.get('/api/v1/me').expect(200);
     expect(res.body.user).toMatchObject({ email: 'admin@a.ae', status: 'active' });
     expect(res.body.tenant).toMatchObject({ id: TENANT_A, name: 'Al Noor Realty', type: 'brokerage' });
     expect(res.body.dataScope).toBe('company');
@@ -44,17 +41,18 @@ describe('login, tenant isolation and GET /me', () => {
   });
 
   it('returns an agent with own scope and no export permission', async () => {
-    const token = await tokenFor(TENANT_A, 'ali@a.ae');
-    const res = await request(app.getHttpServer()).get('/api/v1/me').set('Authorization', `Bearer ${token}`).expect(200);
+    const agent = await signIn(app, USERS.aliA);
+    const res = await agent.get('/api/v1/me').expect(200);
     expect(res.body.dataScope).toBe('own');
     expect(res.body.permissions).not.toContain('leads.export');
   });
 
-  it('keeps the login linked after the first request', async () => {
-    const token = await tokenFor(TENANT_A, 'sara@a.ae');
-    await request(app.getHttpServer()).get('/api/v1/me').set('Authorization', `Bearer ${token}`).expect(200);
-    const again = await request(app.getHttpServer()).get('/api/v1/me').set('Authorization', `Bearer ${token}`).expect(200);
-    expect(again.body.user.email).toBe('sara@a.ae');
+  it('records the sign-in in the audit log and sets lastLoginAt', async () => {
+    const sara = await signIn(app, USERS.saraA);
+    const res = await sara.get('/api/v1/me').expect(200);
+    expect(res.body.user.lastLoginAt).not.toBeNull();
+    const rows = await ownerQuery(`SELECT 1 FROM audit_logs WHERE action = 'login' AND user_id = $1`, [USERS.saraA.id]);
+    expect(rows.length).toBeGreaterThan(0);
   });
 
   it("cannot reach another tenant's user: tenant B token with a tenant A email", async () => {

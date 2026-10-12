@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Qu
 import { ApiAcceptedResponse, ApiBearerAuth, ApiOkResponse, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDateString, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import { CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
+import { AllowWhenReadOnly, CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
 import { PageQuery } from '../../core/http/pagination';
 import { IsUuid } from '../../core/http/validators';
@@ -11,6 +11,7 @@ import { EventsModule } from '../events/events.service';
 import { LeadsModule } from '../leads/leads.module';
 import { MarketingModule } from '../marketing/marketing.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OrganizationModule } from '../organization/organization.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { ExportDto, ExportPage, ExportRequestDto, ReportList, ReportResultDto, ReportsService } from './reports.service';
 
@@ -50,6 +51,7 @@ export class ReportsController {
 
   @Post('reports/:key/exports')
   @HttpCode(202)
+  @AllowWhenReadOnly()
   @ApiOperation({ operationId: 'exportReport', summary: 'Export a report (Admin)' })
   @ApiAcceptedResponse({ type: ExportDto })
   export(@CurrentPrincipal() p: Principal, @Param('key') key: string, @Body() body: ExportRequestDto): Promise<ExportDto> {
@@ -74,8 +76,9 @@ export class ReportsController {
 
 /** Reports, exports and the export log (SRS §8). */
 @Module({
-  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule],
+  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule],
   controllers: [ReportsController],
   providers: [ReportsService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}

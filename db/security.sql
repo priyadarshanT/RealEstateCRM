@@ -134,3 +134,33 @@ BEGIN
 END $$;
 CREATE TRIGGER billing_invoices_frozen BEFORE UPDATE ON billing_invoices
   FOR EACH ROW EXECUTE FUNCTION guard_billing_invoice();
+
+-- ===== Added by migrations 0002–0005 (kept here so db/setup_db builds the same database) =====
+GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys, lead_imports TO crm_app, crm_worker;
+GRANT SELECT ON idempotency_keys, lead_imports TO crm_readonly;
+REVOKE DELETE ON signups FROM crm_app, crm_worker;
+GRANT SELECT, INSERT, UPDATE ON signups TO crm_app, crm_platform;
+GRANT UPDATE (scheduled_seats, scheduled_plan_id, scheduled_billing_cycle) ON subscriptions TO crm_app;
+GRANT USAGE ON SEQUENCE billing_invoice_number_seq TO crm_platform, crm_worker;
+
+-- A cancelled company's data is deleted 90 days after its subscription ended (SRS §12, §14 Privacy).
+-- Runs as the owner: append-only history and the draft/approved document guards are switched off for this delete only.
+CREATE OR REPLACE FUNCTION delete_tenant_data(p_tenant uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE t text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM subscriptions WHERE tenant_id = p_tenant AND status = 'canceled' AND data_delete_after < current_date) THEN
+    RAISE EXCEPTION 'Tenant % is not due for deletion', p_tenant;
+  END IF;
+  SET LOCAL session_replication_role = replica;
+  FOR t IN SELECT c.table_name FROM information_schema.columns c
+           JOIN information_schema.tables x ON x.table_name = c.table_name AND x.table_schema = c.table_schema AND x.table_type = 'BASE TABLE'
+           WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id' LOOP
+    EXECUTE format('DELETE FROM %I WHERE tenant_id = $1', t) USING p_tenant;
+  END LOOP;
+  UPDATE sales_enquiries SET tenant_id = NULL WHERE tenant_id = p_tenant;
+  DELETE FROM tenants WHERE id = p_tenant;
+  INSERT INTO platform_audit_logs (action, entity_type, entity_id, changes) VALUES ('tenant.data_deleted', 'tenants', p_tenant, NULL);
+END $$;
+REVOKE ALL ON FUNCTION delete_tenant_data(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION delete_tenant_data(uuid) TO crm_worker;

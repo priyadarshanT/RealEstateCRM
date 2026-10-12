@@ -2,7 +2,7 @@
 
 A multi-tenant CRM for Dubai real estate brokerages (B2B) and individual agents (B2C): leads, assignment, calls and meetings, WhatsApp and email, projects and units, deals, invoices, attendance, dashboard and reports.
 
-**Status:** design complete (v1.2, 11 Oct 2026). Database ready and tested (77 tables, 51/51 rule tests). Backend and frontend coding starts next.
+**Status:** design complete (v1.2, 11 Oct 2026). Database ready and tested (80 tables: 77 in v1.2 + 3 added by migrations 0002–0005; 51/51 rule tests). Backend and frontend coding starts next.
 
 | Document | Where |
 |---|---|
@@ -67,7 +67,7 @@ Windows, from the `db` folder, with PostgreSQL 16 installed:
 .\setup_db.ps1 -Password YOUR_POSTGRES_PASSWORD -Test
 ```
 
-Creates database `crm_dev` with all 77 tables, sample data, and runs the 51 rule tests. See `db/README.md`.
+Creates database `crm_dev` with all 80 tables, sample data, and runs the 51 rule tests. See `db/README.md`.
 
 ## Run the full app on your computer (once the code exists)
 

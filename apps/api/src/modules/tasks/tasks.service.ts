@@ -225,6 +225,12 @@ export class TasksService {
       .groupBy(tasks.assignedUserId, tasks.outcome);
   }
 
+  /** Every task of the company, in pages (data export). */
+  async exportPage(limit: number, offset: number): Promise<Record<string, unknown>[]> {
+    const rows = await this.db.current.select().from(tasks).orderBy(asc(tasks.dueAt), asc(tasks.id)).limit(limit).offset(offset);
+    return rows.map((r) => ({ ...TaskDto.from(r) }));
+  }
+
   // =================================================================== helpers
   /** The lead's next follow-up is its earliest open task (SRS §2.20; Scheduled and Overdue tabs). */
   async refreshFollowUp(leadId: string): Promise<void> {

@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { eq, sql } from 'drizzle-orm';
+import { DbService } from '../../core/database/db.service';
+import { roles, tenants, users } from './organization.schema';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { Problems } from '../../core/errors/problem';
@@ -32,7 +35,48 @@ export class OrganizationService {
     private readonly tenants: TenantRepository,
     private readonly users: UsersRepository,
     private readonly audit: AuditService,
+    private readonly db: DbService,
   ) {}
+
+  /**
+   * Creates a company with its default roles, stages, reasons and settings (create_tenant_defaults) and its first
+   * Admin, who is invited and takes a seat on first login. Runs inside a transaction for the new tenant ID
+   * (architecture: tenant.signed_up → organization creates the company).
+   */
+  async createCompany(input: {
+    tenantId: string;
+    type: 'brokerage' | 'individual';
+    name: string;
+    tradeLicenseNo?: string | null;
+    reraOrn?: string | null;
+    reraBrn?: string | null;
+    email: string;
+    phone?: string | null;
+    adminFullName: string;
+    adminEmail: string;
+    adminPhone?: string | null;
+  }): Promise<{ adminUserId: string }> {
+    if (this.db.currentTenantId !== input.tenantId) throw new Error('createCompany runs inside the new tenant transaction');
+    await this.db.current.insert(tenants).values({
+      id: input.tenantId,
+      type: input.type,
+      name: input.name,
+      legalName: input.name,
+      tradeLicenseNo: input.tradeLicenseNo ?? null,
+      reraOrn: input.reraOrn ?? null,
+      reraBrn: input.reraBrn ?? null,
+      email: input.email,
+      phone: input.phone ?? null,
+    } as typeof tenants.$inferInsert);
+    await this.db.current.execute(sql`SELECT create_tenant_defaults(${input.tenantId}::uuid)`);
+    const [admin] = await this.db.current.select({ id: roles.id }).from(roles).where(eq(roles.key, 'admin')).limit(1);
+    const [user] = await this.db.current
+      .insert(users)
+      .values({ tenantId: input.tenantId, email: input.adminEmail, fullName: input.adminFullName, phone: input.adminPhone ?? null, roleId: admin!.id, status: 'invited' })
+      .returning({ id: users.id });
+    await this.audit.record('create', 'tenants', input.tenantId, { name: [null, input.name], type: [null, input.type] });
+    return { adminUserId: user!.id };
+  }
 
   async getMe(principal: Principal): Promise<MeDto> {
     const [user, tenant] = await Promise.all([this.users.findById(principal.userId), this.tenants.find(principal.tenantId)]);

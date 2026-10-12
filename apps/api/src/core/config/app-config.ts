@@ -30,6 +30,24 @@ const schema = z
     META_APP_SECRET: z.string().optional(),
     META_VERIFY_TOKEN: z.string().optional(),
     META_GRAPH_VERSION: z.string().default('v21.0'),
+    /** crm_platform (owner console, Stripe webhooks, billing records; architecture §6.3). */
+    PLATFORM_DATABASE_URL: z.string().url().optional(),
+    /** Owner console login: its own Cognito user pool (two-factor). Dev mode signs platform tokens locally. */
+    PLATFORM_COGNITO_ISSUER: z.string().url().optional(),
+    PLATFORM_COGNITO_CLIENT_ID: z.string().optional(),
+    /** Cognito user pool of the CRM users (invite the first Admin at sign-up). */
+    COGNITO_USER_POOL_ID: z.string().optional(),
+    /** Stripe (cards and subscriptions). Test-mode keys locally and in staging. */
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_PUBLISHABLE_KEY: z.string().default('pk_test_placeholder'),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    /** Cloudflare Turnstile bot check on public sign-up and contact forms. */
+    TURNSTILE_SECRET: z.string().optional(),
+    /** Email: AWS SES in AWS; "log" writes emails to the server log (local development). */
+    MAIL_MODE: z.enum(['ses', 'log']).default('log'),
+    MAIL_FROM: z.string().default('Dubai Real Estate CRM <no-reply@crm.example.ae>'),
+    /** PDF maker (Gotenberg 8, architecture §2). */
+    GOTENBERG_URL: z.string().url().default('http://localhost:3001'),
     AUTH_MODE: z.enum(['cognito', 'dev']).default('cognito'),
     DEV_AUTH_SECRET: z.string().min(32).optional(),
     COGNITO_ISSUER: z.string().url().optional(),
@@ -41,6 +59,9 @@ const schema = z
     }
     if (env.SECRETS_MODE === 'memory' && (env.NODE_ENV === 'production' || env.NODE_ENV === 'staging')) {
       ctx.addIssue({ code: 'custom', path: ['SECRETS_MODE'], message: 'staging and production keep secrets in SSM' });
+    }
+    if (env.NODE_ENV === 'production' && !env.TURNSTILE_SECRET) {
+      ctx.addIssue({ code: 'custom', path: ['TURNSTILE_SECRET'], message: 'the bot check is required in production' });
     }
     if (env.AUTH_MODE === 'dev' && env.NODE_ENV === 'production') {
       ctx.addIssue({ code: 'custom', path: ['AUTH_MODE'], message: 'dev login is not allowed in production' });

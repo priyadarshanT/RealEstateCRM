@@ -18,4 +18,5 @@ export function useTestDatabase(): void {
   process.env.DATABASE_URL = withDatabase(app, TEST_DATABASE);
   process.env.MIGRATION_DATABASE_URL = withDatabase(owner, TEST_DATABASE);
   if (process.env.WORKER_DATABASE_URL) process.env.WORKER_DATABASE_URL = withDatabase(process.env.WORKER_DATABASE_URL, TEST_DATABASE);
+  if (process.env.PLATFORM_DATABASE_URL) process.env.PLATFORM_DATABASE_URL = withDatabase(process.env.PLATFORM_DATABASE_URL, TEST_DATABASE);
 }

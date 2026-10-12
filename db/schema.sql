@@ -1532,6 +1532,9 @@ CREATE TABLE subscriptions (
   data_delete_after date,                                          -- Tenant data deleted after this date (canceled + 90 days)
   stripe_customer_id text UNIQUE,                                  -- Stripe customer
   stripe_subscription_id text UNIQUE,                              -- Stripe subscription
+  scheduled_seats integer CHECK (scheduled_seats IS NULL OR scheduled_seats >= 1), -- Fewer seats from the next renewal (migration 0005)
+  scheduled_plan_id uuid REFERENCES plans(id),                     -- Downgrade from the next renewal (migration 0005)
+  scheduled_billing_cycle text CHECK (scheduled_billing_cycle IN ('monthly','yearly')), -- Switch to monthly from the next renewal (migration 0005)
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
   updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
   UNIQUE (tenant_id, id),
@@ -1637,6 +1640,37 @@ CREATE TABLE billing_payments (
   FOREIGN KEY (tenant_id, proof_file_id) REFERENCES files(tenant_id, id)
 );
 
+--- table signups | Billing | Sign-ups in progress: email code, Stripe card setup, before the company exists (migration 0005).
+CREATE TABLE signups (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Sign-up ID
+  tenant_type     text NOT NULL CHECK (tenant_type IN ('brokerage','individual')), -- Brokerage (B2B) or individual agent (B2C)
+  company_name    text NOT NULL,                                   -- Company or agent name
+  trade_license_no text,                                           -- Trade licence (brokerage)
+  rera_orn        text,                                            -- RERA office number (brokerage)
+  rera_brn        text,                                            -- RERA broker card (individual)
+  admin_full_name text NOT NULL,                                   -- First Admin
+  admin_email     citext NOT NULL,                                 -- First Admin's login email
+  admin_phone     text NOT NULL CHECK (admin_phone ~ '^\+[1-9][0-9]{6,14}$'), -- First Admin's phone
+  plan_id         uuid NOT NULL REFERENCES plans(id),              -- Chosen plan
+  seats           integer NOT NULL CHECK (seats >= 1),             -- Paid users
+  billing_cycle   text NOT NULL CHECK (billing_cycle IN ('monthly','yearly')), -- Billing cycle
+  code_hash       text NOT NULL,                                   -- SHA-256 of the emailed 6-digit code
+  code_expires_at timestamptz NOT NULL,                            -- Code valid until (15 minutes)
+  code_attempts   smallint NOT NULL DEFAULT 0,                     -- Wrong tries (max 5)
+  code_sent_at    timestamptz NOT NULL DEFAULT now(),              -- Last code email (resend at most once a minute)
+  email_verified_at timestamptz,                                   -- Email confirmed
+  stripe_customer_id text,                                         -- Stripe customer
+  stripe_setup_intent_id text,                                     -- Stripe card setup
+  tenant_id       uuid REFERENCES tenants(id),                     -- Company created on completion
+  ip_address      inet,                                            -- Where the sign-up came from
+  expires_at      timestamptz NOT NULL,                            -- Sign-up abandoned after this time
+  completed_at    timestamptz,                                     -- Completed time
+  created_at      timestamptz NOT NULL DEFAULT now(),              -- Started time
+  CHECK (tenant_type <> 'brokerage' OR (trade_license_no IS NOT NULL AND rera_orn IS NOT NULL)),
+  CHECK (tenant_type <> 'individual' OR rera_brn IS NOT NULL),
+  CHECK ((completed_at IS NULL) = (tenant_id IS NULL))
+);
+
 --- table tenant_usage_daily | Billing | Daily usage per tenant for the owner console: active users, leads, messages, storage.
 CREATE TABLE tenant_usage_daily (
   tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Tenant
@@ -1728,6 +1762,8 @@ CREATE INDEX attendance_corrections_pending_idx ON attendance_corrections (tenan
 CREATE INDEX leave_requests_user_idx ON leave_requests (tenant_id, user_id, start_date);
 
 CREATE INDEX lead_imports_created_idx ON lead_imports (tenant_id, created_at DESC);
+CREATE INDEX signups_email_idx ON signups (admin_email) WHERE completed_at IS NULL;
+CREATE SEQUENCE billing_invoice_number_seq; -- Tax invoice numbers CRM-YYYY-NNNNNN (migration 0005)
 CREATE INDEX idempotency_keys_created_idx ON idempotency_keys (created_at);
 CREATE INDEX notifications_user_idx ON notifications (tenant_id, user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX webhook_events_status_idx ON webhook_events (status, received_at) WHERE status IN ('received','failed');

@@ -329,6 +329,17 @@ export class LeadsService {
     return rows as { id: string; tenantId: string; ownerUserId: string }[];
   }
 
+  /** Worker: leads created per tenant on one UTC day (tenant usage for the owner console). */
+  async createdPerTenant(day: string): Promise<Map<string, number>> {
+    const start = new Date(`${day}T00:00:00Z`);
+    const rows = await this.workerDb.db
+      .select({ tenantId: leads.tenantId, n: sql<number>`count(*)::int` })
+      .from(leads)
+      .where(and(gte(leads.createdAt, start), lt(leads.createdAt, new Date(start.getTime() + 86_400_000))))
+      .groupBy(leads.tenantId);
+    return new Map(rows.map((r) => [r.tenantId, r.n]));
+  }
+
   /** What assignment rules match on (SRS §4.8): project, campaign, source, language, location. */
   async assignmentFacts(leadId: string) {
     const lead = await this.repo.find(leadId);

@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { WorkerDbService } from '../database/worker-db.service';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
-import { DbService } from '../database/db.service';
+import { Database, DbService } from '../database/db.service';
 import { ProblemException, Problems } from '../errors/problem';
 import { RequestContext } from '../http/request-context';
 import { DOWNLOAD_LINK_SECONDS, FILE_STORAGE, FileStorage } from './file-storage';
@@ -73,7 +74,18 @@ export class FilesService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
+    private readonly workerDb: WorkerDbService,
   ) {}
+
+  /** Worker: bytes stored per tenant (tenant usage for the owner console). */
+  async storagePerTenant(): Promise<Map<string, number>> {
+    const rows = await this.workerDb.db
+      .select({ tenantId: files.tenantId, bytes: sql<string>`sum(${files.sizeBytes})::text` })
+      .from(files)
+      .where(isNull(files.deletedAt))
+      .groupBy(files.tenantId);
+    return new Map(rows.map((r) => [r.tenantId, Number(r.bytes)]));
+  }
 
   registerAccess(type: TargetType, access: AttachmentAccess): void {
     this.access.set(type, access);
@@ -118,6 +130,13 @@ export class FilesService {
       url: await this.storage.downloadLink(file.storageKey, file.fileName),
       expiresAt: new Date(Date.now() + DOWNLOAD_LINK_SECONDS * 1000).toISOString(),
     };
+  }
+
+  /** A download link without the access check: the caller has already authorised it (e.g. billing.view for our invoices). */
+  async systemDownloadLink(fileId: string): Promise<{ url: string; expiresAt: string }> {
+    const file = await this.find(fileId);
+    if (!file) throw Problems.notFound();
+    return { url: await this.storage.downloadLink(file.storageKey, file.fileName), expiresAt: new Date(Date.now() + DOWNLOAD_LINK_SECONDS * 1000).toISOString() };
   }
 
   /** Links an uploaded file to a record. The caller (the owning module) has already checked edit access. */
@@ -174,12 +193,13 @@ export class FilesService {
 
   /** Saves a file the system generated (exports, rejected import rows). */
   /** `ownerUserId`: who may download it (e.g. the user who started an import or export). */
-  async store(fileName: string, mimeType: string, body: Buffer, purpose: string, ownerUserId?: string): Promise<FileRow> {
-    const tenantId = this.db.currentTenantId!;
+  /** `via`: save the file row through another connection (e.g. the platform one) so that connection can link it at once. */
+  async store(fileName: string, mimeType: string, body: Buffer, purpose: string, ownerUserId?: string, via?: { db: Database; tenantId: string }): Promise<FileRow> {
+    const tenantId = via?.tenantId ?? this.db.currentTenantId!;
     const id = randomUUID();
     const storageKey = `${tenantId}/${purpose}/${id}/${safeName(fileName)}`;
     await this.storage.write(storageKey, body, mimeType);
-    const [row] = await this.db.current
+    const [row] = await (via?.db ?? this.db.current)
       .insert(files)
       .values({ id, tenantId, storageKey, fileName, mimeType, sizeBytes: body.length, uploadedBy: ownerUserId ?? RequestContext.get().userId ?? null })
       .returning();

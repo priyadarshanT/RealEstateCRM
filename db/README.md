@@ -1,6 +1,6 @@
 # CRM database: setup on your PC
 
-Database version 1.2 (matches SRS v1.2) · PostgreSQL 16 · 77 tables
+Database version 1.2 (matches SRS v1.2) · PostgreSQL 16 · 80 tables (77 in v1.2; idempotency_keys, lead_imports and signups added by migrations 0002–0005)
 
 ## What you need
 - PostgreSQL 16 with pgAdmin 4 and Command Line Tools (installer: postgresql.org/download)

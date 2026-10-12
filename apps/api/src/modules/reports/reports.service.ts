@@ -13,7 +13,8 @@ import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagi
 import { QueueService, TenantJob } from '../../core/queue/queue.service';
 import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
-import { dayAfter, dayStart, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
+import { dayAfter, dayStart, exportPage, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
+import { OrganizationDirectory } from '../organization/directory.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TasksService } from '../tasks/tasks.service';
@@ -90,6 +91,7 @@ interface ExportJob extends TenantJob {
   dataScope: DataScope;
 }
 
+const COMPANY_DATA = 'company_data';
 const FILTER_KEYS = ['from', 'to', 'projectId', 'sourceId', 'campaignId', 'teamId', 'userId'] as const;
 const EXPORT_PAGE = 1000;
 const EXPORT_MAX_ROWS = 200_000;
@@ -110,10 +112,11 @@ export class ReportsService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     reporting: LeadReportingService,
-    tasks: TasksService,
-    marketing: MarketingService,
-    events: EventsService,
+    private readonly tasks: TasksService,
+    private readonly marketing: MarketingService,
+    private readonly events: EventsService,
     labels: LabelsService,
+    private readonly directory: OrganizationDirectory,
   ) {
     this.reports = new Map(reportDefinitions({ reporting, tasks, marketing, events, labels }).map((r) => [r.key, r]));
   }
@@ -152,6 +155,17 @@ export class ReportsService implements OnModuleInit {
     return this.toDto(row!);
   }
 
+  /**
+   * POST /billing/data-export (SRS §12): every lead, enquiry, timeline entry, task, user, campaign and event in one
+   * workbook; also while read-only and for 90 days after cancellation. Logged like every export.
+   */
+  async requestCompanyExport(p: Principal): Promise<ExportDto> {
+    const [row] = await this.db.current.insert(exportLogs).values({ tenantId: p.tenantId, userId: p.userId, reportKey: COMPANY_DATA, filters: {}, format: 'xlsx' }).returning();
+    await this.queue.send<ExportJob>('report-export', { tenantId: p.tenantId, exportId: row!.id, userId: p.userId, dataScope: 'company' });
+    await this.audit.record('export', 'export_logs', row!.id, { reportKey: [null, COMPANY_DATA] });
+    return this.toDto(row!);
+  }
+
   async getExport(p: Principal, id: string): Promise<ExportDto> {
     const [row] = await this.db.current.select().from(exportLogs).where(eq(exportLogs.id, id)).limit(1);
     if (!row || (row.userId !== p.userId && !p.permissions.has('audit.view'))) throw Problems.notFound();
@@ -179,6 +193,10 @@ export class ReportsService implements OnModuleInit {
     if (!row || row.status === 'completed') return;
     await this.db.current.update(exportLogs).set({ status: 'running' }).where(eq(exportLogs.id, row.id));
     try {
+      if (row.reportKey === COMPANY_DATA) {
+        await this.buildCompanyExport(row, job);
+        return;
+      }
       const report = this.find(row.reportKey);
       // The export runs with the requester's scope (the worker has no signed-in user).
       const principal: Principal = { userId: job.userId, tenantId: job.tenantId, dataScope: job.dataScope, email: '', roleKey: '', permissions: new Set(), tenantStatus: 'active' };
@@ -200,6 +218,40 @@ export class ReportsService implements OnModuleInit {
     } catch (err) {
       await this.db.current.update(exportLogs).set({ status: 'failed', errorDetail: (err as Error).message.slice(0, 1000), completedAt: new Date() }).where(eq(exportLogs.id, row.id));
     }
+  }
+
+  private async buildCompanyExport(row: ExportRow, job: ExportJob): Promise<void> {
+    const principal: Principal = { userId: job.userId, tenantId: job.tenantId, dataScope: 'company', email: '', roleKey: '', permissions: new Set(), tenantStatus: 'active' };
+    const workbook = new ExcelJS.Workbook();
+    let total = 0;
+    const addSheet = (name: string, rows: Record<string, unknown>[]) => {
+      const sheet = workbook.addWorksheet(name);
+      const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+      sheet.columns = keys.map((k) => ({ header: k, key: k, width: 18 }));
+      sheet.getRow(1).font = { bold: true };
+      for (const r of rows) sheet.addRow(Object.fromEntries(keys.map((k) => [k, typeof r[k] === 'object' && r[k] !== null ? JSON.stringify(r[k]) : r[k]])));
+      total += rows.length;
+    };
+    const all = async (page: (limit: number, offset: number) => Promise<Record<string, unknown>[]>) => {
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; ; offset += EXPORT_PAGE) {
+        const batch = await page(EXPORT_PAGE, offset);
+        rows.push(...batch);
+        if (batch.length < EXPORT_PAGE || rows.length >= EXPORT_MAX_ROWS) return rows;
+      }
+    };
+    const leads = this.find('leads');
+    addSheet('Leads', await all(async (limit, offset) => (await leads.run(principal, {}, limit, offset)).rows));
+    addSheet('Enquiries', await all((limit, offset) => exportPage(this.db, 'enquiries', limit, offset)));
+    addSheet('Timeline', await all((limit, offset) => exportPage(this.db, 'timeline', limit, offset)));
+    addSheet('Tasks', await all((limit, offset) => this.tasks.exportPage(limit, offset)));
+    addSheet('Users', (await this.directory.all()).map((u) => ({ ...u })));
+    addSheet('Campaigns', await all(async (limit, offset) => (offset ? [] : (await this.marketing.list({ limit: 200 } as never)).data.map((c) => ({ ...c })))));
+    addSheet('Events', await all(async (limit, offset) => (offset ? [] : (await this.events.list({ limit: 200 } as never)).data.map((e) => ({ ...e })))));
+    const body = Buffer.from(await workbook.xlsx.writeBuffer());
+    const file = await this.files.store(`company-data-${new Date().toISOString().slice(0, 10)}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body, 'export', row.userId);
+    await this.db.current.update(exportLogs).set({ status: 'completed', rowCount: total, fileId: file.id, completedAt: new Date() }).where(eq(exportLogs.id, row.id));
+    await this.notifications.notify({ userId: row.userId, type: 'export_ready', title: 'Your company data export is ready', body: `${total} rows` });
   }
 
   private find(key: string): ReportDefinition {

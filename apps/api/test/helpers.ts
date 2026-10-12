@@ -29,7 +29,8 @@ export async function createTestApp(override: (b: TestingModuleBuilder) => Testi
   const moduleRef = await override(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(FILE_STORAGE).useValue(testStorage)).compile();
   const app = moduleRef.createNestApplication({ logger: false, rawBody: true });
   configureApp(app);
-  await app.init();
+  // Listen once on a free port: supertest then reuses it instead of opening and closing a server per request.
+  await app.listen(0, '127.0.0.1');
   return app;
 }
 

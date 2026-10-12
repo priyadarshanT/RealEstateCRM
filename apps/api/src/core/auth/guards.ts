@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { DbService } from '../database/db.service';
 import { Problems } from '../errors/problem';
 import { RequestContext } from '../http/request-context';
-import { IS_PUBLIC, REQUIRED_PERMISSION } from './decorators';
+import { ALLOW_WHEN_READ_ONLY, IS_PUBLIC, REQUIRED_PERMISSION } from './decorators';
 import {
   AuthenticatedRequest,
   PRINCIPAL_RESOLVER,
@@ -74,6 +74,7 @@ export class PermissionGuard implements CanActivate {
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
   constructor(
+    private readonly reflector: Reflector,
     private readonly db: DbService,
     @Optional() @Inject(SUBSCRIPTION_STATUS) private readonly subscriptions?: SubscriptionStatusProvider,
   ) {}
@@ -82,6 +83,7 @@ export class SubscriptionGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const principal = request.principal;
     if (!principal || !this.subscriptions || READ_METHODS.has(request.method)) return true;
+    if (this.reflector.getAllAndOverride<boolean>(ALLOW_WHEN_READ_ONLY, [context.getHandler(), context.getClass()])) return true;
     const readOnly = await this.db.withTenant(principal.tenantId, () => this.subscriptions!.isReadOnly(principal.tenantId));
     if (readOnly) throw Problems.readOnly();
     return true;

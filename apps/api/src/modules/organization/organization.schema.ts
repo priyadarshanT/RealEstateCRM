@@ -4,7 +4,7 @@ import { boolean, char, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-co
 // updated_at is read as text so it can be used as an exact ETag (microsecond precision).
 
 export const tenants = pgTable('tenants', {
-  id: uuid('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   type: text('type').$type<'brokerage' | 'individual'>().notNull(),
   name: text('name').notNull(),
   legalName: text('legal_name'),
@@ -18,11 +18,14 @@ export const tenants = pgTable('tenants', {
   website: text('website'),
   logoFileId: uuid('logo_file_id'),
   tradeLicenseFileId: uuid('trade_license_file_id'),
-  timezone: text('timezone').notNull(),
-  baseCurrency: char('base_currency', { length: 3 }).notNull(),
-  verificationStatus: text('verification_status').$type<'pending' | 'verified' | 'rejected'>().notNull(),
-  status: text('status').$type<'active' | 'suspended' | 'closed'>().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  timezone: text('timezone').notNull().default('Asia/Dubai'),
+  baseCurrency: char('base_currency', { length: 3 }).notNull().default('AED'),
+  verificationStatus: text('verification_status').$type<'pending' | 'verified' | 'rejected'>().notNull().default('pending'),
+  verifiedBy: uuid('verified_by'),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  status: text('status').$type<'active' | 'suspended' | 'closed'>().notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 });
 
 export const permissions = pgTable('permissions', {

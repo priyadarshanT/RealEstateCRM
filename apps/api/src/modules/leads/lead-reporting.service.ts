@@ -280,6 +280,16 @@ export class LeadReportingService {
   }
 }
 
+/** Full data export (SRS §12): every enquiry and timeline entry of the company, in pages. */
+export async function exportPage(db: DbService, table: 'enquiries' | 'timeline', limit: number, offset: number): Promise<Record<string, unknown>[]> {
+  if (table === 'enquiries') {
+    const rows = await db.current.select().from(leadInquiries).orderBy(leadInquiries.receivedAt, leadInquiries.id).limit(limit).offset(offset);
+    return rows.map((i) => ({ leadId: i.leadId, sourceId: i.sourceId, isReEnquiry: i.isReEnquiry, formName: i.formName, externalSubmissionId: i.externalSubmissionId, formAnswers: JSON.stringify(i.formAnswers), submittedAt: i.submittedAt.toISOString() }));
+  }
+  const rows = await db.current.select().from(activities).orderBy(activities.occurredAt, activities.id).limit(limit).offset(offset);
+  return rows.map((a) => ({ leadId: a.leadId, type: a.type, summary: a.summary, body: a.body, actorUserId: a.actorUserId, occurredAt: a.occurredAt.toISOString() }));
+}
+
 export function dayStart(d: string): Date {
   return new Date(`${d}T00:00:00Z`);
 }

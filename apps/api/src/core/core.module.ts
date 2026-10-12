@@ -15,11 +15,13 @@ import { EventsModule } from './events/events.module';
 import { FilesModule } from './files/files.module';
 import { QueueModule } from './queue/queue.module';
 import { SecretsModule } from './secrets/secret-store';
+import { MailModule } from './mail/mailer';
+import { PlatformDbModule } from './database/platform-db.module';
 import { RequestContextInterceptor } from './http/request-context';
 
 /** Shared infrastructure used by every business module. */
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuthModule, AuditModule, EventsModule, QueueModule, FilesModule, SecretsModule, ThrottlerModule.forRoot(rateLimits)],
+  imports: [ConfigModule, DatabaseModule, AuthModule, AuditModule, EventsModule, QueueModule, FilesModule, SecretsModule, MailModule, PlatformDbModule, ThrottlerModule.forRoot(rateLimits)],
   controllers: [HealthController],
   providers: [
     { provide: APP_FILTER, useClass: ProblemFilter },

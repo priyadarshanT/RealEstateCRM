@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DbService } from '../../core/database/db.service';
 import { divisions, roles, teams, users } from './organization.schema';
 
@@ -59,6 +59,35 @@ export class OrganizationDirectory {
   /** Active users with the built-in Admin role (fallback owner when a whole team misses a lead). */
   async admins(): Promise<UserSummary[]> {
     return this.select().where(and(eq(roles.key, 'admin'), eq(users.status, 'active'))).orderBy(asc(users.fullName), asc(users.id));
+  }
+
+  /** Seats in use (active users) and invited users of the current tenant (billing usage). */
+  async userCounts(): Promise<{ active: number; invited: number; lastLoginAt: Date | null }> {
+    const [row] = await this.db.current
+      .select({
+        active: sql<number>`count(*) FILTER (WHERE ${users.status} = 'active')::int`,
+        invited: sql<number>`count(*) FILTER (WHERE ${users.status} = 'invited')::int`,
+        lastLoginAt: sql<Date | null>`max(${users.lastLoginAt})`,
+      })
+      .from(users);
+    return { active: row?.active ?? 0, invited: row?.invited ?? 0, lastLoginAt: row?.lastLoginAt ? new Date(row.lastLoginAt) : null };
+  }
+
+  /** The first Admin by sign-up order (owner console shows their email). */
+  async firstAdminEmail(): Promise<string | null> {
+    const [row] = await this.db.current
+      .select({ email: users.email })
+      .from(users)
+      .innerJoin(roles, eq(roles.id, users.roleId))
+      .where(eq(roles.key, 'admin'))
+      .orderBy(asc(users.id))
+      .limit(1);
+    return row?.email ?? null;
+  }
+
+  /** Every user of the company (data export). */
+  async all(): Promise<UserSummary[]> {
+    return this.select().orderBy(asc(users.fullName), asc(users.id));
   }
 
   /** Global search: people by name or email. */

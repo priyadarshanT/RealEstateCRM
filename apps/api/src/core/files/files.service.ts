@@ -165,15 +165,23 @@ export class FilesService {
     return { file, body: await this.storage.read(file.storageKey) };
   }
 
+  /** Reads a stored file for a background job (no signed-in user; the caller owns the record that points to it). */
+  async readSystem(fileId: string): Promise<{ file: FileRow; body: Buffer }> {
+    const file = await this.find(fileId);
+    if (!file) throw new Error(`file ${fileId} not found`);
+    return { file, body: await this.storage.read(file.storageKey) };
+  }
+
   /** Saves a file the system generated (exports, rejected import rows). */
-  async store(fileName: string, mimeType: string, body: Buffer, purpose: string): Promise<FileRow> {
+  /** `ownerUserId`: who may download it (e.g. the user who started an import or export). */
+  async store(fileName: string, mimeType: string, body: Buffer, purpose: string, ownerUserId?: string): Promise<FileRow> {
     const tenantId = this.db.currentTenantId!;
     const id = randomUUID();
     const storageKey = `${tenantId}/${purpose}/${id}/${safeName(fileName)}`;
     await this.storage.write(storageKey, body, mimeType);
     const [row] = await this.db.current
       .insert(files)
-      .values({ id, tenantId, storageKey, fileName, mimeType, sizeBytes: body.length, uploadedBy: RequestContext.get().userId ?? null })
+      .values({ id, tenantId, storageKey, fileName, mimeType, sizeBytes: body.length, uploadedBy: ownerUserId ?? RequestContext.get().userId ?? null })
       .returning();
     return row!;
   }

@@ -710,6 +710,31 @@ CREATE TABLE lead_shares (
   FOREIGN KEY (tenant_id, shared_by) REFERENCES users(tenant_id, id)
 );
 
+--- table lead_imports | Leads | Excel / CSV imports: file, column mapping, preview, counts and rejected rows (migration 0004).
+CREATE TABLE lead_imports (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Import ID
+  tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
+  file_id         uuid NOT NULL,                                   -- Uploaded Excel / CSV file
+  source_id       uuid NOT NULL,                                   -- Lead source for imported leads
+  mapping         jsonb NOT NULL DEFAULT '{}',                     -- CRM field → column header
+  status          text NOT NULL DEFAULT 'previewing' CHECK (status IN ('previewing','importing','completed','failed')), -- Progress
+  preview         jsonb NOT NULL DEFAULT '[]',                     -- First rows with checks, shown before confirming
+  rows_total      integer NOT NULL DEFAULT 0 CHECK (rows_total >= 0), -- Data rows in the file
+  rows_imported   integer NOT NULL DEFAULT 0 CHECK (rows_imported >= 0), -- New leads created
+  rows_re_enquired integer NOT NULL DEFAULT 0 CHECK (rows_re_enquired >= 0), -- Rows added to existing leads (re-enquiry)
+  rows_rejected   integer NOT NULL DEFAULT 0 CHECK (rows_rejected >= 0), -- Rows not imported (invalid phone / email, duplicates)
+  rejected_rows_file_id uuid,                                      -- CSV of rejected rows with the reason
+  error_detail    text,                                            -- Failure detail
+  created_by      uuid NOT NULL,                                   -- Who started the import
+  created_at      timestamptz NOT NULL DEFAULT now(),              -- Started time
+  completed_at    timestamptz,                                     -- Finished time
+  UNIQUE (tenant_id, id),
+  CHECK ((status IN ('completed','failed')) = (completed_at IS NOT NULL)),
+  FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id),
+  FOREIGN KEY (tenant_id, source_id) REFERENCES lead_sources(tenant_id, id),
+  FOREIGN KEY (tenant_id, rejected_rows_file_id) REFERENCES files(tenant_id, id),
+  FOREIGN KEY (tenant_id, created_by) REFERENCES users(tenant_id, id)
+);
 --- table saved_filters | Leads | Saved list filters and column choices, private or shared with a team.
 CREATE TABLE saved_filters (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Filter ID
@@ -1702,6 +1727,7 @@ CREATE INDEX attendance_records_date_idx ON attendance_records (tenant_id, work_
 CREATE INDEX attendance_corrections_pending_idx ON attendance_corrections (tenant_id, created_at) WHERE status = 'pending';
 CREATE INDEX leave_requests_user_idx ON leave_requests (tenant_id, user_id, start_date);
 
+CREATE INDEX lead_imports_created_idx ON lead_imports (tenant_id, created_at DESC);
 CREATE INDEX idempotency_keys_created_idx ON idempotency_keys (created_at);
 CREATE INDEX notifications_user_idx ON notifications (tenant_id, user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX webhook_events_status_idx ON webhook_events (status, received_at) WHERE status IN ('received','failed');

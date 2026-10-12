@@ -266,11 +266,12 @@ describe('leads module', () => {
     });
 
     it('a known phone becomes a re-enquiry on the same lead; the same submission is never imported twice', async () => {
+      const before = (await ali.get(`/api/v1/leads/${SAMPLE_LEAD}`).expect(200)).body.enquiryCount;
       const first = await receive({ sourceId: SOURCE_META_A, fullName: 'Ahmed', phone: '00971 50 123 4567', externalSubmissionId: 'META-900', formAnswers: { budget: '4M' } });
       expect(first).toEqual({ status: 're_enquired', leadId: SAMPLE_LEAD, reopened: false });
       expect(await receive({ sourceId: SOURCE_META_A, phone: '+971501234567', externalSubmissionId: 'META-900' })).toEqual({ status: 'duplicate' });
       const lead = await ali.get(`/api/v1/leads/${SAMPLE_LEAD}`).expect(200);
-      expect(lead.body).toMatchObject({ enquiryCount: 2, ownerUserId: USERS.aliA.id });
+      expect(lead.body).toMatchObject({ enquiryCount: before + 1, ownerUserId: USERS.aliA.id });
       const timeline = await ali.get(`/api/v1/leads/${SAMPLE_LEAD}/timeline?types=re_enquiry`).expect(200);
       expect(timeline.body.data[0].summary).toBe('Re-enquired via Meta');
     });

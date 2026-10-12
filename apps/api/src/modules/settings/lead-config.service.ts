@@ -96,6 +96,11 @@ export class LeadConfigService {
     return reason;
   }
 
+  /** For other modules: a built-in reason by key (e.g. reassignment/no_response). */
+  async reasonByKey(type: ReasonRow['type'], key: string): Promise<ReasonRow | undefined> {
+    return this.repo.findReasonByKey(type, key);
+  }
+
   async createReason(body: ReasonInputDto): Promise<ReasonRow> {
     const missing = (['type', 'name'] as const).filter((f) => body[f] === undefined);
     if (missing.length) throw Problems.validation(missing.map((field) => ({ field, message: `${field} is required` })));

@@ -76,6 +76,11 @@ export class LeadConfigRepository {
     return row;
   }
 
+  async findReasonByKey(type: ReasonRow['type'], key: string): Promise<ReasonRow | undefined> {
+    const [row] = await this.db.current.select().from(reasons).where(and(eq(reasons.type, type), eq(reasons.key, key))).limit(1);
+    return row;
+  }
+
   async createReason(values: Required<Pick<ReasonRow, 'type' | 'name'>> & ReasonValues, tenantId: string): Promise<ReasonRow> {
     const [row] = await this.db.current.insert(reasons).values({ ...values, tenantId }).returning();
     return row!;

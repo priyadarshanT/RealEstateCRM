@@ -3,6 +3,7 @@ import { and, asc, eq, gte, ilike, inArray, isNotNull, isNull, lt, or, sql, SQL 
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
+import { WorkerDbService } from '../../core/database/worker-db.service';
 import { Problems } from '../../core/errors/problem';
 import { pgCode, PG_FOREIGN_KEY_VIOLATION } from '../../core/errors/pg';
 import { EventBus } from '../../core/events/domain-events';
@@ -71,6 +72,7 @@ export class LeadsService {
     private readonly audit: AuditService,
     private readonly events: EventBus,
     private readonly db: DbService,
+    private readonly workerDb: WorkerDbService,
   ) {}
 
   // =================================================================== reading
@@ -314,6 +316,30 @@ export class LeadsService {
     // Open leads with an owner keep a follow-up date (database rule); without a planned action it stays as it was.
     if (at === null && lead.stageCategory === 'open' && lead.ownerUserId) return;
     await this.repo.update(leadId, { nextFollowUpAt: at });
+  }
+
+  /** Worker scan across tenants: open leads whose owner has not acted within the response time (10-minute rule). */
+  async responseOverdue(limit: number): Promise<{ id: string; tenantId: string; ownerUserId: string }[]> {
+    const rows = await this.workerDb.db
+      .select({ id: leads.id, tenantId: leads.tenantId, ownerUserId: leads.ownerUserId })
+      .from(leads)
+      .where(and(isNotNull(leads.responseDueAt), lt(leads.responseDueAt, new Date()), isNotNull(leads.ownerUserId), eq(leads.stageCategory, 'open'), isNull(leads.deletedAt)))
+      .orderBy(asc(leads.responseDueAt))
+      .limit(limit);
+    return rows as { id: string; tenantId: string; ownerUserId: string }[];
+  }
+
+  /** What assignment rules match on (SRS §4.8): project, campaign, source, language, location. */
+  async assignmentFacts(leadId: string) {
+    const lead = await this.repo.find(leadId);
+    if (!lead) return undefined;
+    const projects = (await this.repo.projectsOf([leadId])).get(leadId)?.projectIds ?? [];
+    return { lead, projectIds: projects };
+  }
+
+  /** Users who already missed this lead under the 10-minute rule since it was last assigned by hand. */
+  async missedBy(leadId: string): Promise<string[]> {
+    return this.repo.missedBy(leadId);
   }
 
   async setScore(leadId: string, score: number): Promise<void> {

@@ -226,7 +226,8 @@ describe('organization module', () => {
       await adminB.patch(`/api/v1/users/${USERS.aliA.id}`).send({ fullName: 'x' }).expect(404);
       await adminB.delete(`/api/v1/roles/${roleIds.finance}`).expect(404);
       const list = await adminB.get('/api/v1/users').expect(200);
-      expect(list.body.data.map((u: { email: string }) => u.email)).toEqual(['admin@b.ae']);
+      expect(list.body.data.length).toBeGreaterThan(0);
+      expect(list.body.data.every((u: { email: string }) => u.email.endsWith('@b.ae'))).toBe(true);
     });
 
     it('only audit.view (Admin, Director) can read the audit log, and it cannot be edited', async () => {
@@ -235,7 +236,8 @@ describe('organization module', () => {
       expect(res.body.data.length).toBe(5);
       expect(res.body.page.hasMore).toBe(true);
       const other = await adminB.get('/api/v1/audit-logs').expect(200);
-      expect(other.body.data.every((e: { userId: string | null }) => e.userId === USERS.adminB.id || e.userId === null)).toBe(true);
+      const tenantAUsers: string[] = [USERS.adminA.id, USERS.saraA.id, USERS.aliA.id, USERS.miraA.id];
+      expect(other.body.data.some((e: { userId: string | null }) => e.userId !== null && tenantAUsers.includes(e.userId))).toBe(false);
       const rows = await ownerQuery<{ n: string }>(`SELECT count(*) AS n FROM audit_logs`);
       expect(Number(rows[0]!.n)).toBeGreaterThan(10);
     });

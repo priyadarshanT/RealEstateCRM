@@ -1,0 +1,261 @@
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsObject, IsOptional } from 'class-validator';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
+import { jsonb, pgTable, text, timestamp, uuid, integer } from 'drizzle-orm/pg-core';
+import ExcelJS from 'exceljs';
+import { AuditService } from '../../core/audit/audit.service';
+import { DataScope, Principal } from '../../core/auth/principal';
+import { DbService } from '../../core/database/db.service';
+import { Problems } from '../../core/errors/problem';
+import { FilesService } from '../../core/files/files.service';
+import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagination';
+import { QueueService, TenantJob } from '../../core/queue/queue.service';
+import { LabelsService } from '../dashboard/labels.service';
+import { EventsService } from '../events/events.service';
+import { dayAfter, dayStart, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
+import { MarketingService } from '../marketing/marketing.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { TasksService } from '../tasks/tasks.service';
+import { ReportColumn, reportDefinitions, ReportDefinition } from './report-definitions';
+
+// export_logs (db/schema.sql, Reports): every export with user, report, filters, format, rows and time.
+export const exportLogs = pgTable('export_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  reportKey: text('report_key').notNull(),
+  filters: jsonb('filters').$type<Record<string, unknown>>().notNull().default({}),
+  format: text('format').$type<'xlsx' | 'csv'>().notNull(),
+  status: text('status').$type<'queued' | 'running' | 'completed' | 'failed'>().notNull().default('queued'),
+  rowCount: integer('row_count'),
+  fileId: uuid('file_id'),
+  errorDetail: text('error_detail'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+});
+type ExportRow = typeof exportLogs.$inferSelect;
+
+// ---------------------------------------------------------------- DTOs
+export class ReportColumnDto {
+  @ApiProperty() key!: string;
+  @ApiProperty() label!: string;
+  @ApiPropertyOptional() type?: string;
+}
+
+export class ReportDefinitionDto {
+  @ApiProperty() key!: string;
+  @ApiProperty() name!: string;
+  @ApiPropertyOptional() module!: string;
+  @ApiProperty({ type: [String] }) filters!: string[];
+  @ApiProperty({ type: [ReportColumnDto] }) columns!: ReportColumnDto[];
+}
+
+export class ReportList {
+  @ApiProperty({ type: [ReportDefinitionDto] }) data!: ReportDefinitionDto[];
+}
+
+export class ReportResultDto {
+  @ApiProperty({ type: [ReportColumnDto] }) columns!: ReportColumnDto[];
+  @ApiProperty({ type: [Object] }) rows!: Record<string, unknown>[];
+  @ApiProperty({ type: Object }) totals!: Record<string, unknown>;
+  @ApiPropertyOptional({ type: PageInfo }) page?: PageInfo & { total?: number };
+}
+
+export class ExportRequestDto {
+  @ApiProperty({ enum: ['xlsx', 'csv'] }) @IsIn(['xlsx', 'csv']) format!: 'xlsx' | 'csv';
+  @ApiPropertyOptional({ type: Object }) @IsOptional() @IsObject() filters?: Record<string, unknown>;
+}
+
+export class ExportDto {
+  @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
+  @ApiProperty() reportKey!: string;
+  @ApiProperty({ enum: ['xlsx', 'csv'] }) format!: 'xlsx' | 'csv';
+  @ApiProperty({ enum: ['queued', 'running', 'completed', 'failed'] }) status!: ExportRow['status'];
+  @ApiPropertyOptional({ type: Number, nullable: true }) rowCount!: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Time-limited link, present when completed' }) downloadUrl!: string | null;
+  @ApiProperty({ format: 'date-time', readOnly: true }) createdAt!: string;
+  @ApiPropertyOptional({ format: 'uuid' }) userId?: string;
+  @ApiPropertyOptional({ type: Object }) filters?: Record<string, unknown>;
+}
+
+export class ExportPage {
+  @ApiProperty({ type: [ExportDto] }) data!: ExportDto[];
+  @ApiProperty({ type: PageInfo }) page!: PageInfo;
+}
+
+interface ExportJob extends TenantJob {
+  exportId: string;
+  userId: string;
+  dataScope: DataScope;
+}
+
+const FILTER_KEYS = ['from', 'to', 'projectId', 'sourceId', 'campaignId', 'teamId', 'userId'] as const;
+const EXPORT_PAGE = 1000;
+const EXPORT_MAX_ROWS = 200_000;
+
+/**
+ * Reports and exports (SRS §8): every report filters by date, project, source, campaign, team and agent and is
+ * limited to the user's scope. Exports are Admin-only by default, run in the background with exactly the same
+ * query as the screen (same totals), are logged, and the user is notified when the file is ready.
+ */
+@Injectable()
+export class ReportsService implements OnModuleInit {
+  private readonly reports: Map<string, ReportDefinition>;
+
+  constructor(
+    private readonly db: DbService,
+    private readonly queue: QueueService,
+    private readonly files: FilesService,
+    private readonly notifications: NotificationsService,
+    private readonly audit: AuditService,
+    reporting: LeadReportingService,
+    tasks: TasksService,
+    marketing: MarketingService,
+    events: EventsService,
+    labels: LabelsService,
+  ) {
+    this.reports = new Map(reportDefinitions({ reporting, tasks, marketing, events, labels }).map((r) => [r.key, r]));
+  }
+
+  onModuleInit(): void {
+    this.queue.register<ExportJob>('report-export', (job) => this.buildExport(job));
+  }
+
+  list(): ReportDefinitionDto[] {
+    return [...this.reports.values()].map((r) => ({ key: r.key, name: r.name, module: r.module, filters: r.filters, columns: r.columns }));
+  }
+
+  async run(p: Principal, key: string, f: ReportFilters, limit: number, cursor?: string): Promise<ReportResultDto> {
+    const report = this.find(key);
+    checkPeriod(f);
+    const offset = report.paged && cursor ? Number(decodeCursor(cursor, 1)[0]) : 0;
+    const out = await report.run(p, f, limit, offset);
+    const hasMore = report.paged ? offset + out.rows.length < (out.total ?? 0) : false;
+    return {
+      columns: report.columns,
+      rows: out.rows,
+      totals: out.totals,
+      page: { nextCursor: hasMore ? encodeCursor([offset + limit]) : null, hasMore, ...(report.paged ? { total: out.total } : {}) },
+    };
+  }
+
+  // ---------------------------------------------------------------- exports
+  async requestExport(p: Principal, key: string, body: ExportRequestDto): Promise<ExportDto> {
+    const report = this.find(key);
+    if (!p.permissions.has(report.exportPermission)) throw Problems.forbidden('Only users allowed to export (Admin by default) can export.');
+    const filters = cleanFilters(body.filters ?? {});
+    checkPeriod(filters);
+    const [row] = await this.db.current.insert(exportLogs).values({ tenantId: p.tenantId, userId: p.userId, reportKey: key, filters: { ...filters }, format: body.format }).returning();
+    await this.queue.send<ExportJob>('report-export', { tenantId: p.tenantId, exportId: row!.id, userId: p.userId, dataScope: p.dataScope });
+    await this.audit.record('export', 'export_logs', row!.id, { reportKey: [null, key], format: [null, body.format], filters: [null, filters] });
+    return this.toDto(row!);
+  }
+
+  async getExport(p: Principal, id: string): Promise<ExportDto> {
+    const [row] = await this.db.current.select().from(exportLogs).where(eq(exportLogs.id, id)).limit(1);
+    if (!row || (row.userId !== p.userId && !p.permissions.has('audit.view'))) throw Problems.notFound();
+    const downloadUrl = row.status === 'completed' && row.fileId && row.userId === p.userId ? (await this.files.downloadLink(row.fileId)).url : null;
+    return this.toDto(row, downloadUrl);
+  }
+
+  /** Export log (audit.view): who exported what, with which filters, when. */
+  async log(limit: number, cursor?: string, userId?: string, from?: string, to?: string): Promise<Page<ExportDto>> {
+    const offset = cursor ? Number(decodeCursor(cursor, 1)[0]) : 0;
+    const rows = await this.db.current
+      .select()
+      .from(exportLogs)
+      .where(and(userId ? eq(exportLogs.userId, userId) : undefined, from ? gte(exportLogs.createdAt, dayStart(from)) : undefined, to ? lt(exportLogs.createdAt, dayAfter(to)) : undefined))
+      .orderBy(desc(exportLogs.createdAt), desc(exportLogs.id))
+      .limit(limit + 1)
+      .offset(offset);
+    const hasMore = rows.length > limit;
+    return { data: rows.slice(0, limit).map((r) => this.toDto(r)), page: { nextCursor: hasMore ? encodeCursor([offset + limit]) : null, hasMore } };
+  }
+
+  /** report-export job: same report and filters as on screen, all rows, then an .xlsx or .csv file. */
+  async buildExport(job: ExportJob): Promise<void> {
+    const [row] = await this.db.current.select().from(exportLogs).where(eq(exportLogs.id, job.exportId)).limit(1);
+    if (!row || row.status === 'completed') return;
+    await this.db.current.update(exportLogs).set({ status: 'running' }).where(eq(exportLogs.id, row.id));
+    try {
+      const report = this.find(row.reportKey);
+      // The export runs with the requester's scope (the worker has no signed-in user).
+      const principal: Principal = { userId: job.userId, tenantId: job.tenantId, dataScope: job.dataScope, email: '', roleKey: '', permissions: new Set(), tenantStatus: 'active' };
+      const filters = row.filters as ReportFilters;
+      const rows: Record<string, unknown>[] = [];
+      let totals: Record<string, unknown> = {};
+      for (let offset = 0; ; offset += EXPORT_PAGE) {
+        const out = await report.run(principal, filters, EXPORT_PAGE, offset);
+        rows.push(...out.rows);
+        totals = out.totals;
+        if (!report.paged || out.rows.length < EXPORT_PAGE || rows.length >= EXPORT_MAX_ROWS) break;
+      }
+      const body = row.format === 'csv' ? toCsv(report.columns, rows, totals) : await toXlsx(report.name, report.columns, rows, totals);
+      const fileName = `${row.reportKey}-${new Date().toISOString().slice(0, 10)}.${row.format}`;
+      const mime = row.format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const file = await this.files.store(fileName, mime, body, 'export', row.userId);
+      await this.db.current.update(exportLogs).set({ status: 'completed', rowCount: rows.length, fileId: file.id, completedAt: new Date() }).where(eq(exportLogs.id, row.id));
+      await this.notifications.notify({ userId: row.userId, type: 'export_ready', title: `Your export is ready: ${report.name}`, body: `${rows.length} rows` });
+    } catch (err) {
+      await this.db.current.update(exportLogs).set({ status: 'failed', errorDetail: (err as Error).message.slice(0, 1000), completedAt: new Date() }).where(eq(exportLogs.id, row.id));
+    }
+  }
+
+  private find(key: string): ReportDefinition {
+    const report = this.reports.get(key);
+    if (!report) throw Problems.notFound(`There is no report called "${key}".`);
+    return report;
+  }
+
+  private toDto(r: ExportRow, downloadUrl: string | null = null): ExportDto {
+    return { id: r.id, reportKey: r.reportKey, format: r.format, status: r.status, rowCount: r.rowCount, downloadUrl, createdAt: r.createdAt.toISOString(), userId: r.userId, filters: r.filters };
+  }
+}
+
+function cleanFilters(input: Record<string, unknown>): ReportFilters {
+  const out: Record<string, string> = {};
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const date = /^\d{4}-\d{2}-\d{2}$/;
+  const errors = [];
+  for (const [key, value] of Object.entries(input)) {
+    if (!(FILTER_KEYS as readonly string[]).includes(key)) {
+      errors.push({ field: `filters.${key}`, message: 'unknown filter' });
+      continue;
+    }
+    const ok = typeof value === 'string' && ((key === 'from' || key === 'to') ? date.test(value) : uuid.test(value));
+    if (!ok) errors.push({ field: `filters.${key}`, message: key === 'from' || key === 'to' ? 'must be a date (YYYY-MM-DD)' : 'must be a UUID' });
+    else out[key] = value;
+  }
+  if (errors.length) throw Problems.validation(errors);
+  return out;
+}
+
+function checkPeriod(f: ReportFilters): void {
+  if (f.from && f.to && f.to < f.from) throw Problems.validation([{ field: 'to', message: 'must be on or after from' }]);
+}
+
+function cell(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+function toCsv(columns: ReportColumn[], rows: Record<string, unknown>[], totals: Record<string, unknown>): Buffer {
+  const esc = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const lines = [columns.map((c) => esc(c.label)).join(',')];
+  for (const r of rows) lines.push(columns.map((c) => esc(cell(r[c.key]))).join(','));
+  lines.push(columns.map((c, i) => esc(i === 0 ? 'Total' : cell(totals[c.key]))).join(','));
+  return Buffer.from(`﻿${lines.join('\r\n')}\r\n`, 'utf8');
+}
+
+async function toXlsx(name: string, columns: ReportColumn[], rows: Record<string, unknown>[], totals: Record<string, unknown>): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(name.slice(0, 31).replace(/[:\\/?*[\]]/g, ' '));
+  sheet.columns = columns.map((c) => ({ header: c.label, key: c.key, width: Math.max(12, c.label.length + 2) }));
+  sheet.getRow(1).font = { bold: true };
+  const value = (c: ReportColumn, v: unknown) => (v === null || v === undefined ? null : c.type === 'number' || c.type === 'money' || c.type === 'percent' ? Number(v) : v);
+  for (const r of rows) sheet.addRow(Object.fromEntries(columns.map((c) => [c.key, value(c, r[c.key])])));
+  const total = sheet.addRow(Object.fromEntries(columns.map((c, i) => [c.key, i === 0 ? 'Total' : value(c, totals[c.key])])));
+  total.font = { bold: true };
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}

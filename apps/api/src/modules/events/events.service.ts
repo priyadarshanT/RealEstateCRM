@@ -97,6 +97,15 @@ export class EventsService {
     return row;
   }
 
+  /** Events overlapping a period (event report). */
+  async inPeriod(from?: Date, to?: Date): Promise<EventRow[]> {
+    return this.db.current
+      .select()
+      .from(events)
+      .where(and(from ? sql`${events.endsAt} >= ${from}` : undefined, to ? sql`${events.startsAt} < ${to}` : undefined))
+      .orderBy(asc(events.startsAt));
+  }
+
   async create(body: EventInputDto): Promise<EventRow> {
     const missing = (['name', 'type', 'startsAt', 'endsAt'] as const).filter((f) => !body[f]);
     if (missing.length) throw Problems.validation(missing.map((field) => ({ field, message: `${field} is required` })));

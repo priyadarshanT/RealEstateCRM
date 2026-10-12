@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf, ValidateNested } from 'class-validator';
-import { and, asc, eq, gte, lte, sql, SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql, SQL } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
 import { ProblemException, Problems } from '../../core/errors/problem';
@@ -163,6 +163,40 @@ export class MarketingService {
         .catch(rethrow);
     }
     await this.audit.record('update', 'ad_spend_daily', id, { days: [null, days.map((d) => `${d.spendDate}: ${d.amount} ${d.currency}`)] });
+  }
+
+  /** Spend per campaign in a period (marketing report). Amounts are summed per currency. */
+  async spendByCampaign(from?: string, to?: string): Promise<{ campaignId: string; currency: string; amount: string }[]> {
+    const rows = await this.db.current
+      .select({ campaignId: adSpendDaily.campaignId, currency: adSpendDaily.currency, amount: sql<string>`sum(${adSpendDaily.amount})::text` })
+      .from(adSpendDaily)
+      .where(and(from ? gte(adSpendDaily.spendDate, from) : undefined, to ? lte(adSpendDaily.spendDate, to) : undefined))
+      .groupBy(adSpendDaily.campaignId, adSpendDaily.currency);
+    return rows;
+  }
+
+  /** Spend per day in a period (dashboard trend), optionally for one source or campaign. */
+  async spendByDay(from?: string, to?: string, sourceId?: string, campaignId?: string): Promise<Map<string, string>> {
+    const rows = await this.db.current
+      .select({ date: sql<string>`to_char(${adSpendDaily.spendDate}, 'YYYY-MM-DD')`, amount: sql<string>`sum(${adSpendDaily.amount})::text` })
+      .from(adSpendDaily)
+      .innerJoin(campaigns, eq(campaigns.id, adSpendDaily.campaignId))
+      .where(
+        and(
+          from ? gte(adSpendDaily.spendDate, from) : undefined,
+          to ? lte(adSpendDaily.spendDate, to) : undefined,
+          sourceId ? eq(campaigns.sourceId, sourceId) : undefined,
+          campaignId ? eq(adSpendDaily.campaignId, campaignId) : undefined,
+        ),
+      )
+      .groupBy(sql`1`);
+    return new Map(rows.map((r) => [r.date, Number(r.amount).toFixed(2)]));
+  }
+
+  async names(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db.current.select({ id: campaigns.id, name: campaigns.name }).from(campaigns).where(inArray(campaigns.id, ids));
+    return new Map(rows.map((r) => [r.id, r.name]));
   }
 
   /** For the ad-spend import job (integrations): API figures replace whatever was there. */

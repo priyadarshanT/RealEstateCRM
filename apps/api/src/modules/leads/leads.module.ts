@@ -7,6 +7,7 @@ import { LeadImportController } from './import/lead-import.controller';
 import { LeadImportService } from './import/lead-import.service';
 import { LeadActionsService } from './lead-actions.service';
 import { LeadIntakeService } from './lead-intake.service';
+import { LeadReportingService } from './lead-reporting.service';
 import { LeadLookupController, SavedFiltersController } from './lead-misc.controller';
 import { LeadScope } from './lead-scope';
 import { LeadsController } from './leads.controller';
@@ -27,8 +28,9 @@ import { UserLeadsAdapter } from './user-leads.adapter';
     LeadIntakeService,
     SavedFiltersService,
     LeadImportService,
+    LeadReportingService,
     { provide: USER_LEADS_PORT, useClass: UserLeadsAdapter },
   ],
-  exports: [LeadsService, LeadActionsService, LeadIntakeService, LeadScope],
+  exports: [LeadsService, LeadActionsService, LeadIntakeService, LeadScope, LeadReportingService],
 })
 export class LeadsModule {}

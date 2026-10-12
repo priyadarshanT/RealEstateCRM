@@ -195,6 +195,36 @@ export class TasksService {
     return ActivityDto.from(activity);
   }
 
+  // =================================================================== figures for the dashboard and reports
+  /** Meetings and viewings due today (dashboard card), within the user's scope. */
+  async meetingsToday(p: Principal): Promise<number> {
+    const start = startOfToday();
+    const end = new Date(start.getTime() + 86_400_000);
+    const [row] = await this.db.current
+      .select({ n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(and(await this.scope(p), inArray(tasks.type, ['meeting', 'viewing']), eq(tasks.status, 'open'), gte(tasks.dueAt, start), lt(tasks.dueAt, end)));
+    return row?.n ?? 0;
+  }
+
+  /** Completed calls per agent and outcome in a period (performance report, SRS §8.4). */
+  async callOutcomes(p: Principal, from?: Date, to?: Date, userId?: string) {
+    return this.db.current
+      .select({ userId: tasks.assignedUserId, outcome: tasks.outcome, count: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(
+        and(
+          await this.scope(p),
+          eq(tasks.type, 'call'),
+          eq(tasks.status, 'completed'),
+          from ? gte(tasks.completedAt, from) : undefined,
+          to ? lt(tasks.completedAt, to) : undefined,
+          userId ? eq(tasks.assignedUserId, userId) : undefined,
+        ),
+      )
+      .groupBy(tasks.assignedUserId, tasks.outcome);
+  }
+
   // =================================================================== helpers
   /** The lead's next follow-up is its earliest open task (SRS §2.20; Scheduled and Overdue tabs). */
   async refreshFollowUp(leadId: string): Promise<void> {

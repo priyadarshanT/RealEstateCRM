@@ -4,6 +4,7 @@ import { MeController, OrganizationController } from './controllers/organization
 import { RolesController } from './controllers/roles.controller';
 import { DivisionsController, TeamsController } from './controllers/teams.controller';
 import { UsersController } from './controllers/users.controller';
+import { OrganizationDirectory } from './directory.service';
 import { OrganizationService } from './organization.service';
 import { OrganizationPrincipalResolver } from './principal-resolver';
 import { RolesRepository } from './repositories/roles.repository';
@@ -23,11 +24,12 @@ import { UsersService } from './users.service';
     RolesRepository,
     TeamsRepository,
     OrganizationService,
+    OrganizationDirectory,
     UsersService,
     RolesService,
     TeamsService,
     { provide: PRINCIPAL_RESOLVER, useClass: OrganizationPrincipalResolver },
   ],
-  exports: [OrganizationService, UsersService, PRINCIPAL_RESOLVER],
+  exports: [OrganizationService, OrganizationDirectory, UsersService, PRINCIPAL_RESOLVER],
 })
 export class OrganizationModule {}

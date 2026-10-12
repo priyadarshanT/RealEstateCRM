@@ -1,4 +1,6 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { EventBus } from '../../core/events/domain-events';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
 import { Problems } from '../../core/errors/problem';
@@ -22,8 +24,18 @@ export class UsersService {
     private readonly users: UsersRepository,
     private readonly audit: AuditService,
     private readonly db: DbService,
-    @Optional() @Inject(USER_LEADS_PORT) private readonly leads?: UserLeadsPort,
+    private readonly events: EventBus,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Provided by the leads module (resolved lazily: leads depends on organization, not the other way round). */
+  private get leads(): UserLeadsPort | undefined {
+    try {
+      return this.moduleRef.get<UserLeadsPort>(USER_LEADS_PORT, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
 
   async list(query: UserListQuery): Promise<Page<UserDto>> {
     const rows = await this.users.list(query);
@@ -72,19 +84,22 @@ export class UsersService {
   async setReceivesLeads(id: string, receivesLeads: boolean): Promise<UserRow> {
     const before = await this.get(id);
     if (before.receivesLeads === receivesLeads) return before;
-    return this.save(before, { receivesLeads });
+    const after = await this.save(before, { receivesLeads });
+    await this.events.publish('user.receives_leads_changed', { tenantId: after.tenantId, userId: id, receivesLeads });
+    return after;
   }
 
   async deactivate(id: string, body: DeactivateUserDto): Promise<UserRow> {
     const before = await this.get(id);
     if (before.status === 'inactive') return before;
-    if (this.leads) {
-      const open = await this.leads.countOpenLeads(id);
+    const leads = this.leads;
+    if (leads) {
+      const open = await leads.countOpenLeads(id);
       if (open > 0) {
         if (!body.reassignToUserId) throw OrgErrors.userHasOpenLeads(open);
         const target = await this.get(body.reassignToUserId);
         if (target.status !== 'active' || target.id === id) throw OrgErrors.invalidState('Leads can only move to another active user.');
-        await this.leads.reassignOpenLeads(id, target.id);
+        await leads.reassignOpenLeads(id, target.id);
       }
     }
     return this.save(before, { status: 'inactive' });

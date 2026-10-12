@@ -12,6 +12,8 @@ export interface ProblemBody {
   detail?: string;
   errors?: FieldError[];
   requestId?: string;
+  /** Extra members for specific errors, e.g. the existing lead with 409 LEAD_EXISTS (RFC 9457 extensions). */
+  [extension: string]: unknown;
 }
 
 const ERROR_TYPE_BASE = 'https://crm.example.ae/errors/';
@@ -24,6 +26,7 @@ export class ProblemException extends Error {
     readonly title: string,
     readonly detail?: string,
     readonly errors?: FieldError[],
+    readonly extensions?: Record<string, unknown>,
   ) {
     super(detail ?? title);
   }
@@ -36,6 +39,7 @@ export class ProblemException extends Error {
       code: this.code,
       ...(this.detail ? { detail: this.detail } : {}),
       ...(this.errors?.length ? { errors: this.errors } : {}),
+      ...(this.extensions ?? {}),
       ...(requestId ? { requestId } : {}),
     };
   }

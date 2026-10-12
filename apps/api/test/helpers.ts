@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { signDevToken } from '../src/core/auth/dev-token-verifier';
+import { FILE_STORAGE, MemoryFileStorage } from '../src/core/files/file-storage';
 import { loadConfig } from '../src/core/config/app-config';
 import { configureApp } from '../src/main';
 import { useTestDatabase } from './test-db';
@@ -21,8 +22,11 @@ export const USERS = {
   adminB: { id: 'b0000000-0000-0000-0000-00000000000a', email: 'admin@b.ae', tenant: TENANT_B },
 } as const;
 
+/** Files are kept in memory during tests (no S3/MinIO needed). */
+export const testStorage = new MemoryFileStorage();
+
 export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(FILE_STORAGE).useValue(testStorage).compile();
   const app = moduleRef.createNestApplication({ logger: false });
   configureApp(app);
   await app.init();

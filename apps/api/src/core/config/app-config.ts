@@ -10,6 +10,14 @@ const schema = z
     PORT: z.coerce.number().int().positive().default(4000),
     DATABASE_URL: z.string().url(),
     DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
+    /** crm_worker (BYPASSRLS): only for the worker's cross-tenant scans and the job queue. */
+    WORKER_DATABASE_URL: z.string().url().optional(),
+    /** api (HTTP) or worker (background jobs and schedules); one codebase, two start modes. */
+    APP_MODE: z.enum(['api', 'worker']).default('api'),
+    /** File storage: S3 bucket in AWS (UAE region); locally MinIO with S3_ENDPOINT. */
+    S3_BUCKET: z.string().optional(),
+    S3_REGION: z.string().default('me-central-1'),
+    S3_ENDPOINT: z.string().url().optional(),
     AUTH_MODE: z.enum(['cognito', 'dev']).default('cognito'),
     DEV_AUTH_SECRET: z.string().min(32).optional(),
     COGNITO_ISSUER: z.string().url().optional(),

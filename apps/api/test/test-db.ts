@@ -17,4 +17,5 @@ export function useTestDatabase(): void {
   if (!app || !owner) throw new Error('DATABASE_URL and MIGRATION_DATABASE_URL must be set in apps/api/.env');
   process.env.DATABASE_URL = withDatabase(app, TEST_DATABASE);
   process.env.MIGRATION_DATABASE_URL = withDatabase(owner, TEST_DATABASE);
+  if (process.env.WORKER_DATABASE_URL) process.env.WORKER_DATABASE_URL = withDatabase(process.env.WORKER_DATABASE_URL, TEST_DATABASE);
 }

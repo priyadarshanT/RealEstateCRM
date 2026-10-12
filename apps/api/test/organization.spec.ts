@@ -150,7 +150,8 @@ describe('organization module', () => {
       const full = await nina.get('/api/v1/me').expect(422);
       expect(full.body.code).toBe('SEAT_LIMIT_REACHED');
 
-      await admin.post(`/api/v1/users/${USERS.miraA.id}/deactivate`).send({}).expect(200);
+      // Mira may own leads (leads tests): they move to the Admin before she is deactivated (SRS §4.3).
+      await admin.post(`/api/v1/users/${USERS.miraA.id}/deactivate`).send({ reassignToUserId: USERS.adminA.id }).expect(200);
       await (await signIn(app, USERS.miraA)).get('/api/v1/me').expect(401);
 
       const me = await nina.get('/api/v1/me').expect(200);
@@ -211,7 +212,10 @@ describe('organization module', () => {
       await admin.post('/api/v1/teams').send({ name: 'Team A' }).expect(201);
       await admin.post('/api/v1/teams').send({ name: 'Team B' }).expect(201);
       const page = await admin.get('/api/v1/teams?limit=1').expect(200);
-      expect(page.body).toMatchObject({ data: [{ name: 'Team A' }], page: { hasMore: true } });
+      expect(page.body.data).toHaveLength(1);
+      expect(page.body.page.hasMore).toBe(true);
+      const next = await admin.get(`/api/v1/teams?limit=1&cursor=${page.body.page.nextCursor}`).expect(200);
+      expect(next.body.data[0].name > page.body.data[0].name).toBe(true);
       await admin.get('/api/v1/divisions').expect(200);
     });
   });

@@ -1,7 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Observable } from 'rxjs';
-import { AuthenticatedRequest } from '../auth/principal';
+import { AuthenticatedRequest, Principal } from '../auth/principal';
 
 /** Who is calling and from where; available anywhere during a request (used by the audit log). */
 export interface RequestInfo {
@@ -10,6 +10,8 @@ export interface RequestInfo {
   requestId?: string;
   ipAddress?: string;
   userAgent?: string;
+  /** The signed-in user (absent for jobs and webhooks). */
+  principal?: Principal;
 }
 
 const storage = new AsyncLocalStorage<RequestInfo>();
@@ -29,6 +31,7 @@ export class RequestContextInterceptor implements NestInterceptor {
       requestId: req.requestId,
       ipAddress: req.ip,
       userAgent: req.header('user-agent')?.slice(0, 500),
+      principal: req.principal,
     };
     return new Observable((subscriber) => RequestContext.run(info, () => next.handle().subscribe(subscriber)));
   }

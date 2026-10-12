@@ -1252,6 +1252,21 @@ CREATE TABLE attachments (
   FOREIGN KEY (tenant_id, created_by) REFERENCES users(tenant_id, id)
 );
 
+--- table idempotency_keys | Shared | Idempotency-Key storage: a retried POST with the same key returns the first result (migration 0002).
+CREATE TABLE idempotency_keys (
+  tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
+  user_id         uuid NOT NULL,                                   -- Caller
+  key             text NOT NULL CHECK (length(key) BETWEEN 1 AND 100), -- Idempotency-Key header value
+  method          text NOT NULL,                                   -- HTTP method
+  path            text NOT NULL,                                   -- Request path
+  request_hash    text NOT NULL,                                   -- SHA-256 of the request body (same key + different body is refused)
+  status_code     smallint,                                        -- Stored response status (empty while the first request runs)
+  response_body   jsonb,                                           -- Stored response body
+  created_at      timestamptz NOT NULL DEFAULT now(),              -- First seen (kept 24 hours)
+  PRIMARY KEY (tenant_id, user_id, key),
+  FOREIGN KEY (tenant_id, user_id) REFERENCES users(tenant_id, id) ON DELETE CASCADE
+);
+
 -- ========================= NOTIFICATIONS ============================
 
 --- table notifications | Notifications | In-app notifications (reminders, escalations, assignments). Also sent as push.
@@ -1687,6 +1702,7 @@ CREATE INDEX attendance_records_date_idx ON attendance_records (tenant_id, work_
 CREATE INDEX attendance_corrections_pending_idx ON attendance_corrections (tenant_id, created_at) WHERE status = 'pending';
 CREATE INDEX leave_requests_user_idx ON leave_requests (tenant_id, user_id, start_date);
 
+CREATE INDEX idempotency_keys_created_idx ON idempotency_keys (created_at);
 CREATE INDEX notifications_user_idx ON notifications (tenant_id, user_id, created_at DESC) WHERE read_at IS NULL;
 CREATE INDEX webhook_events_status_idx ON webhook_events (status, received_at) WHERE status IN ('received','failed');
 CREATE INDEX integration_sync_runs_idx ON integration_sync_runs (tenant_id, integration_id, started_at DESC);

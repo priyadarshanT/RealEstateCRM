@@ -55,7 +55,9 @@ describe('leads module', () => {
   describe('create and duplicates', () => {
     it('creates a lead in stage New with its first enquiry, history and timeline', async () => {
       const lead = await newLead(admin, { email: 'Buyer.One@Mail.com', budgetMin: '1000000', budgetMax: '2500000.5', budgetCurrency: 'AED', projectIds: [PROJECT_BEACHFRONT], note: 'Wants sea view' });
-      expect(lead).toMatchObject({ stageId: stage.new, stageCategory: 'open', email: 'buyer.one@mail.com', budgetMax: '2500000.50', projectIds: [PROJECT_BEACHFRONT], latestNote: 'Wants sea view', version: 1, score: 0, enquiryCount: 1 });
+      expect(lead).toMatchObject({ stageId: stage.new, stageCategory: 'open', email: 'buyer.one@mail.com', budgetMax: '2500000.50', projectIds: [PROJECT_BEACHFRONT], latestNote: 'Wants sea view', version: 1, enquiryCount: 1 });
+      // Score (weights 30/20/20/30): budget both ends 100, project 100, source quality 50, engagement 1 note = 5 → 61.5 → 62.
+      expect(lead.score).toBe(62);
       const timeline = await admin.get(`/api/v1/leads/${lead.id}/timeline`).expect(200);
       expect(timeline.body.data.map((a: { type: string }) => a.type).sort()).toEqual(['inquiry', 'note']);
       const inquiries = await admin.get(`/api/v1/leads/${lead.id}/inquiries`).expect(200);
@@ -148,7 +150,9 @@ describe('leads module', () => {
       const lost = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.lost, reasonId: reason['lost:Budget too low'], note: 'Too expensive' }).expect(200);
       expect(lost.body).toMatchObject({ stageCategory: 'lost', closeReasonId: reason['lost:Budget too low'], responseDueAt: null });
 
+      expect(lost.body.score).toBe(0); // Lost leads score 0
       const back = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.follow_up, nextFollowUpAt: '2030-01-01T09:00:00Z' }).expect(200);
+      expect(back.body.score).toBeGreaterThan(0);
       expect(back.body).toMatchObject({ stageCategory: 'open', closeReasonId: null, nextFollowUpAt: '2030-01-01T09:00:00.000Z' });
       const history = await ownerQuery<{ n: number }>(`SELECT count(*)::int AS n FROM lead_stage_history WHERE lead_id = $1`, [lead.id]);
       expect(history[0]!.n).toBe(3);

@@ -23,7 +23,7 @@ import {
 import { canEdit, canManage, LeadAccess, LeadScope } from './lead-scope';
 import { LeadErrors } from './leads.errors';
 import { ActivityInput, LeadPatch, LeadsRepository } from './leads.repository';
-import { AssignmentMethod, LeadRow, leadProjects, leads, leadShares, savedFilters } from './leads.schema';
+import { activities, AssignmentMethod, LeadRow, leadProjects, leads, leadShares, savedFilters } from './leads.schema';
 
 export interface OwnerChange {
   method: AssignmentMethod;
@@ -295,7 +295,7 @@ export class LeadsService {
     if (!lead) return;
     const now = new Date();
     const ownerActed = userId !== null && lead.ownerUserId === userId;
-    await this.repo.update(leadId, {
+    await this.repo.touch(leadId, {
       lastActivityAt: now,
       ...(ownerActed && lead.responseDueAt ? { responseDueAt: null, firstResponseAt: lead.firstResponseAt ?? now } : {}),
     });
@@ -315,7 +315,7 @@ export class LeadsService {
     if (!lead) return;
     // Open leads with an owner keep a follow-up date (database rule); without a planned action it stays as it was.
     if (at === null && lead.stageCategory === 'open' && lead.ownerUserId) return;
-    await this.repo.update(leadId, { nextFollowUpAt: at });
+    await this.repo.touch(leadId, { nextFollowUpAt: at });
   }
 
   /** Worker scan across tenants: open leads whose owner has not acted within the response time (10-minute rule). */
@@ -342,8 +342,25 @@ export class LeadsService {
     return this.repo.missedBy(leadId);
   }
 
+  /** Inputs of the lead score (SRS §2.24): budget, projects, source quality, engagement on the timeline. */
+  async scoringFacts(leadId: string) {
+    const lead = await this.repo.find(leadId);
+    if (!lead) return undefined;
+    const source = await this.config.getSource(lead.sourceId);
+    const projects = (await this.repo.projectsOf([leadId])).get(leadId)?.projectIds ?? [];
+    const [counts] = await this.db.current
+      .select({
+        answeredCalls: sql<number>`count(*) FILTER (WHERE ${activities.type} = 'call' AND ${activities.summary} = 'Call: Answered')::int`,
+        notes: sql<number>`count(*) FILTER (WHERE ${activities.type} = 'note')::int`,
+        inbound: sql<number>`count(*) FILTER (WHERE ${activities.type} IN ('whatsapp', 'email', 'meeting', 'viewing'))::int`,
+      })
+      .from(activities)
+      .where(eq(activities.leadId, leadId));
+    return { lead, sourceQuality: source.qualityScore, projectCount: projects.length, ...(counts ?? { answeredCalls: 0, notes: 0, inbound: 0 }) };
+  }
+
   async setScore(leadId: string, score: number): Promise<void> {
-    await this.repo.update(leadId, { score });
+    await this.repo.touch(leadId, { score });
   }
 
   async assertCanReceive(userId: string): Promise<void> {

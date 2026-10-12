@@ -88,6 +88,11 @@ export class LeadsRepository {
     return row;
   }
 
+  /** System fields (score, last activity, follow-up from tasks, response timer): no version bump, so they never cause a VERSION_CONFLICT. */
+  async touch(id: string, patch: LeadPatch): Promise<void> {
+    await this.db.current.update(leads).set(patch).where(eq(leads.id, id));
+  }
+
   // ------------------------------------------------------------------ projects
   async projectsOf(leadIds: string[]): Promise<Map<string, { projectIds: string[]; primaryProjectId?: string }>> {
     const result = new Map<string, { projectIds: string[]; primaryProjectId?: string }>();

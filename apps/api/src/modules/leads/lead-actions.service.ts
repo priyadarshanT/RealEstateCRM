@@ -135,7 +135,7 @@ export class LeadActionsService implements OnModuleInit {
   async addNote(p: Principal, id: string, body: NoteDto): Promise<ActivityDto> {
     await this.leads.editable(p, id);
     const activity = await this.repo.addActivity(id, { type: 'note', summary: 'Note added', body: body.body, actorUserId: p.userId });
-    await this.repo.update(id, { latestNote: body.body.slice(0, 2000) });
+    await this.repo.touch(id, { latestNote: body.body.slice(0, 2000) });
     await this.leads.recordAction(id, p.userId);
     return ActivityDto.from(activity);
   }

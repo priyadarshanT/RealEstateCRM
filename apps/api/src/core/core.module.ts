@@ -14,11 +14,12 @@ import { rateLimits } from './http/rate-limit';
 import { EventsModule } from './events/events.module';
 import { FilesModule } from './files/files.module';
 import { QueueModule } from './queue/queue.module';
+import { SecretsModule } from './secrets/secret-store';
 import { RequestContextInterceptor } from './http/request-context';
 
 /** Shared infrastructure used by every business module. */
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuthModule, AuditModule, EventsModule, QueueModule, FilesModule, ThrottlerModule.forRoot(rateLimits)],
+  imports: [ConfigModule, DatabaseModule, AuthModule, AuditModule, EventsModule, QueueModule, FilesModule, SecretsModule, ThrottlerModule.forRoot(rateLimits)],
   controllers: [HealthController],
   providers: [
     { provide: APP_FILTER, useClass: ProblemFilter },

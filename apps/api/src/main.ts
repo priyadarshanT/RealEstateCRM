@@ -23,7 +23,8 @@ export function buildOpenApi(app: INestApplication): OpenAPIObject {
 }
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: webhook signatures are checked over the exact bytes received.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   configureApp(app);
   const config = app.get<AppConfig>(APP_CONFIG);
   if (config.NODE_ENV !== 'production') SwaggerModule.setup('api/docs', app, buildOpenApi(app));

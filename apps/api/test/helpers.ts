@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { Client } from 'pg';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -25,9 +25,9 @@ export const USERS = {
 /** Files are kept in memory during tests (no S3/MinIO needed). */
 export const testStorage = new MemoryFileStorage();
 
-export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(FILE_STORAGE).useValue(testStorage).compile();
-  const app = moduleRef.createNestApplication({ logger: false });
+export async function createTestApp(override: (b: TestingModuleBuilder) => TestingModuleBuilder = (b) => b): Promise<INestApplication> {
+  const moduleRef = await override(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(FILE_STORAGE).useValue(testStorage)).compile();
+  const app = moduleRef.createNestApplication({ logger: false, rawBody: true });
   configureApp(app);
   await app.init();
   return app;

@@ -18,6 +18,18 @@ const schema = z
     S3_BUCKET: z.string().optional(),
     S3_REGION: z.string().default('me-central-1'),
     S3_ENDPOINT: z.string().url().optional(),
+    /** Integration tokens: AWS SSM Parameter Store (staging/production) or memory (local development only). */
+    SECRETS_MODE: z.enum(['ssm', 'memory']).default('memory'),
+    /** Public addresses: OAuth redirect (API) and where the browser returns afterwards (screens). */
+    PUBLIC_API_URL: z.string().url().default('http://localhost:4000'),
+    WEB_APP_URL: z.string().url().default('http://localhost:3000'),
+    /** Signs OAuth state values (single-use, 10 minutes). */
+    OAUTH_STATE_SECRET: z.string().min(32).optional(),
+    /** Meta app (lead ads): app ID and secret, and the token Meta sends when verifying the webhook. */
+    META_APP_ID: z.string().optional(),
+    META_APP_SECRET: z.string().optional(),
+    META_VERIFY_TOKEN: z.string().optional(),
+    META_GRAPH_VERSION: z.string().default('v21.0'),
     AUTH_MODE: z.enum(['cognito', 'dev']).default('cognito'),
     DEV_AUTH_SECRET: z.string().min(32).optional(),
     COGNITO_ISSUER: z.string().url().optional(),
@@ -26,6 +38,9 @@ const schema = z
   .superRefine((env, ctx) => {
     if (env.AUTH_MODE === 'dev' && !env.DEV_AUTH_SECRET) {
       ctx.addIssue({ code: 'custom', path: ['DEV_AUTH_SECRET'], message: 'required when AUTH_MODE=dev' });
+    }
+    if (env.SECRETS_MODE === 'memory' && (env.NODE_ENV === 'production' || env.NODE_ENV === 'staging')) {
+      ctx.addIssue({ code: 'custom', path: ['SECRETS_MODE'], message: 'staging and production keep secrets in SSM' });
     }
     if (env.AUTH_MODE === 'dev' && env.NODE_ENV === 'production') {
       ctx.addIssue({ code: 'custom', path: ['AUTH_MODE'], message: 'dev login is not allowed in production' });

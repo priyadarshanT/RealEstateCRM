@@ -1,0 +1,2 @@
+# Build cache from incremental type checks
+*.tsbuildinfo

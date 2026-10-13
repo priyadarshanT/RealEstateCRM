@@ -18,7 +18,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
-import { IsUuid } from '../../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../../core/http/validators';
 import { LeadAccess } from '../lead-scope';
 import { ACTIVITY_TYPES, ActivityRow, InquiryRow, LeadRow, SAVED_FILTER_ENTITIES, SavedFilterRow } from '../leads.schema';
 
@@ -127,8 +127,8 @@ export class LeadListQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() eventId?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(MONEY) budgetMin?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(MONEY) budgetMax?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) createdFrom?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) createdTo?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() createdFrom?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() createdTo?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() savedFilterId?: string;
   @ApiPropertyOptional({ description: 'Default: -score,nextFollowUpAt' }) @IsOptional() @IsString() @MaxLength(200) sort?: string;
   @ApiPropertyOptional() @IsOptional() @Transform(toBool) @IsBoolean() total?: boolean;

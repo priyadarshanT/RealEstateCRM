@@ -1,10 +1,10 @@
 import { Controller, Get, Injectable, Module, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsDateString, IsOptional } from 'class-validator';
+import { IsOptional } from 'class-validator';
 import { CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
 import { Problems } from '../../core/errors/problem';
-import { IsUuid } from '../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../core/http/validators';
 import { LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
 import { LeadsModule } from '../leads/leads.module';
 import { MarketingModule } from '../marketing/marketing.module';
@@ -19,8 +19,8 @@ const ZERO = '0.00';
 
 // ---------------------------------------------------------------- DTOs (components.schemas.Dashboard, CountBucket)
 export class FiltersQuery implements ReportFilters {
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() projectId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() sourceId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() campaignId?: string;

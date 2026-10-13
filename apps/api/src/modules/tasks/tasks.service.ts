@@ -10,6 +10,7 @@ import { LeadsService } from '../leads/leads.service';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { CallLogDto, NextActionDto, TaskCompleteDto, TaskCompleteResult, TaskDto, TaskInputDto, TaskListQuery, TaskPage } from './dto/task.dto';
 import { CallOutcome, TaskRow, tasks } from './tasks.schema';
+import { dayStart, dayAfter } from '../../core/http/dates';
 
 const OUTCOME_LABEL: Record<CallOutcome, string> = {
   answered: 'Answered',
@@ -289,8 +290,8 @@ export class TasksService {
 
 /** Calendar views: day, week or month starting at `from` (or today); `to` overrides the end. */
 function range(q: TaskListQuery): [Date | undefined, Date | undefined] {
-  const start = q.from ? new Date(`${q.from}T00:00:00Z`) : q.view && q.view !== 'list' ? startOfToday() : undefined;
-  let end = q.to ? new Date(new Date(`${q.to}T00:00:00Z`).getTime() + 86_400_000) : undefined;
+  const start = q.from ? dayStart(q.from) : q.view && q.view !== 'list' ? startOfToday() : undefined;
+  let end = q.to ? dayAfter(q.to) : undefined;
   if (!end && start && q.view && q.view !== 'list') {
     end = new Date(start);
     if (q.view === 'day') end.setUTCDate(end.getUTCDate() + 1);

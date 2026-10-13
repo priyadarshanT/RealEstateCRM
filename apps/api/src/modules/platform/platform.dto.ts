@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { PageInfo, PageQuery } from '../../core/http/pagination';
-import { IsUuid } from '../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../core/http/validators';
 import { BillingUsageDto, SubscriptionDto } from '../billing/dto/billing.dto';
 
 const MONEY = /^\d+(\.\d{1,2})?$/;
@@ -110,8 +110,8 @@ export class CreateCompanyDto {
 export class InvoiceListQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() tenantId?: string;
   @ApiPropertyOptional({ enum: ['open', 'paid', 'void', 'uncollectible'] }) @IsOptional() @IsIn(['open', 'paid', 'void', 'uncollectible']) status?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
 }
 
 export class ConfirmTransferDto {
@@ -137,6 +137,6 @@ export class PlanInputDto {
 
 export class AuditQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() tenantId?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
 }

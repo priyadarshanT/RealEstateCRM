@@ -5,6 +5,7 @@ import { DbService } from '../../core/database/db.service';
 import { LeadConfigService } from '../settings/lead-config.service';
 import { LeadScope } from './lead-scope';
 import { activities, leadAssignments, leadInquiries, leadProjects, leads, leadStageHistory } from './leads.schema';
+import { dayStart, dayAfter } from '../../core/http/dates';
 
 /** The filters every report and the dashboard accept (SRS §8.1, §10.6). Dates are inclusive days (UTC). */
 export interface ReportFilters {
@@ -288,12 +289,4 @@ export async function exportPage(db: DbService, table: 'enquiries' | 'timeline',
   }
   const rows = await db.current.select().from(activities).orderBy(activities.occurredAt, activities.id).limit(limit).offset(offset);
   return rows.map((a) => ({ leadId: a.leadId, type: a.type, summary: a.summary, body: a.body, actorUserId: a.actorUserId, occurredAt: a.occurredAt.toISOString() }));
-}
-
-export function dayStart(d: string): Date {
-  return new Date(`${d}T00:00:00Z`);
-}
-
-export function dayAfter(d: string): Date {
-  return new Date(dayStart(d).getTime() + 86_400_000);
 }

@@ -1,7 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { IsUuid } from '../http/validators';
+import { IsDateOnly, IsUuid } from '../http/validators';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { RequirePermission } from '../auth/decorators';
 import { PageInfo, PageQuery } from '../http/pagination';
 import { AuditEntry, AuditService } from './audit.service';
@@ -11,8 +11,8 @@ class AuditQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() entityId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() userId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) action?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
 }
 
 class AuditEntryDto implements AuditEntry {

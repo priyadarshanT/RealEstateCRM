@@ -4,7 +4,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
-  IsDateString,
   IsIn,
   IsInt,
   IsObject,
@@ -19,7 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
-import { IsUuid } from '../../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../../core/http/validators';
 import { LEAD_SOURCE_TYPES, LeadSourceRow, LeadStageRow, ReasonRow, SettingRow } from '../settings.schema';
 
 const nullableUuid = { type: String, format: 'uuid', nullable: true } as const;
@@ -59,7 +58,7 @@ export class CurrencyList {
 export class CurrencyInput {
   @ApiProperty({ pattern: '^[A-Z]{3}$', example: 'AED' }) @Matches(/^[A-Z]{3}$/) code!: string;
   @ApiPropertyOptional() @IsOptional() @Matches(/^\d{1,10}(\.\d{1,8})?$/, { message: 'rateToBase must be a positive decimal string' }) rateToBase?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) effectiveDate?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() effectiveDate?: string;
 }
 
 export class SetCurrenciesDto {

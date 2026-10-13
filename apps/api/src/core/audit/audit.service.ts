@@ -4,6 +4,7 @@ import { DbService } from '../database/db.service';
 import { RequestContext } from '../http/request-context';
 import { decodeCursor, Page, toPage } from '../http/pagination';
 import { auditLogs } from './audit.schema';
+import { dayStart, dayAfter } from '../http/dates';
 
 // Actions allowed by the audit_logs.action check constraint.
 export type AuditAction =
@@ -89,8 +90,8 @@ export class AuditService {
       filter.entityId ? eq(auditLogs.entityId, filter.entityId) : undefined,
       filter.userId ? eq(auditLogs.userId, filter.userId) : undefined,
       filter.action ? eq(auditLogs.action, filter.action) : undefined,
-      filter.from ? gte(auditLogs.createdAt, new Date(`${filter.from}T00:00:00Z`)) : undefined,
-      filter.to ? lt(auditLogs.createdAt, new Date(new Date(`${filter.to}T00:00:00Z`).getTime() + 86_400_000)) : undefined,
+      filter.from ? gte(auditLogs.createdAt, dayStart(filter.from)) : undefined,
+      filter.to ? lt(auditLogs.createdAt, dayAfter(filter.to)) : undefined,
     ];
     if (filter.cursor) where.push(lt(auditLogs.id, Number(decodeCursor(filter.cursor, 1)[0])));
     const rows = await this.db.current

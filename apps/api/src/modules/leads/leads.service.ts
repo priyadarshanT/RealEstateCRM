@@ -24,6 +24,7 @@ import { canEdit, canManage, LeadAccess, LeadScope } from './lead-scope';
 import { LeadErrors } from './leads.errors';
 import { ActivityInput, LeadPatch, LeadsRepository } from './leads.repository';
 import { activities, AssignmentMethod, LeadRow, leadProjects, leads, leadShares, savedFilters } from './leads.schema';
+import { dayStart, dayAfter } from '../../core/http/dates';
 
 export interface OwnerChange {
   method: AssignmentMethod;
@@ -331,11 +332,11 @@ export class LeadsService {
 
   /** Worker: leads created per tenant on one UTC day (tenant usage for the owner console). */
   async createdPerTenant(day: string): Promise<Map<string, number>> {
-    const start = new Date(`${day}T00:00:00Z`);
+    const start = dayStart(day);
     const rows = await this.workerDb.db
       .select({ tenantId: leads.tenantId, n: sql<number>`count(*)::int` })
       .from(leads)
-      .where(and(gte(leads.createdAt, start), lt(leads.createdAt, new Date(start.getTime() + 86_400_000))))
+      .where(and(gte(leads.createdAt, start), lt(leads.createdAt, dayAfter(day))))
       .groupBy(leads.tenantId);
     return new Map(rows.map((r) => [r.tenantId, r.n]));
   }
@@ -475,8 +476,8 @@ export class LeadsService {
     // Budget ranges overlap the requested range.
     if (f.budgetMin) c.push(sql`coalesce(${leads.budgetMax}, ${leads.budgetMin}) >= ${f.budgetMin}`);
     if (f.budgetMax) c.push(sql`coalesce(${leads.budgetMin}, ${leads.budgetMax}) <= ${f.budgetMax}`);
-    if (f.createdFrom) c.push(gte(leads.createdAt, new Date(`${f.createdFrom}T00:00:00Z`)));
-    if (f.createdTo) c.push(lt(leads.createdAt, new Date(new Date(`${f.createdTo}T00:00:00Z`).getTime() + 86_400_000)));
+    if (f.createdFrom) c.push(gte(leads.createdAt, dayStart(f.createdFrom)));
+    if (f.createdTo) c.push(lt(leads.createdAt, dayAfter(f.createdTo)));
     return c;
   }
 
@@ -549,4 +550,3 @@ function rethrowReference(err: unknown): never {
   if (pgCode(err) === PG_FOREIGN_KEY_VIOLATION) throw Problems.validation([{ field: 'id', message: 'a linked record (campaign, event, project or currency) does not exist' }]);
   throw err;
 }
-

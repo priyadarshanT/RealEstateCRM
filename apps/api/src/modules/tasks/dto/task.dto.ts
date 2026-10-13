@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
-import { IsUuid } from '../../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../../core/http/validators';
 import { CALL_OUTCOMES, CallOutcome, TASK_TYPES, TaskRow, TaskType } from '../tasks.schema';
 
 const nullableUuid = { type: String, format: 'uuid', nullable: true } as const;
@@ -55,8 +55,8 @@ export class TaskListQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() leadId?: string;
   @ApiPropertyOptional() @IsOptional() @IsIn(['open', 'completed', 'cancelled']) status?: TaskRow['status'];
   @ApiPropertyOptional() @IsOptional() @IsIn(TASK_TYPES) type?: TaskType;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
   @ApiPropertyOptional({ enum: ['day', 'week', 'month', 'list'] }) @IsOptional() @IsIn(['day', 'week', 'month', 'list']) view?: 'day' | 'week' | 'month' | 'list';
   @ApiPropertyOptional()
   @IsOptional()

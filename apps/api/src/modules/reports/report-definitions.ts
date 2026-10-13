@@ -1,7 +1,8 @@
 import { Principal } from '../../core/auth/principal';
 import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
-import { LeadReportingService, ReportFilters, dayAfter, dayStart } from '../leads/lead-reporting.service';
+import { dayAfter, dayStart } from '../../core/http/dates';
+import { LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { TasksService } from '../tasks/tasks.service';
 

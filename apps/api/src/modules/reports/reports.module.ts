@@ -1,11 +1,11 @@
 import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiAcceptedResponse, ApiBearerAuth, ApiOkResponse, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { AllowWhenReadOnly, CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
 import { PageQuery } from '../../core/http/pagination';
-import { IsUuid } from '../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../core/http/validators';
 import { DashboardModule, FiltersQuery } from '../dashboard/dashboard.service';
 import { EventsModule } from '../events/events.service';
 import { LeadsModule } from '../leads/leads.module';
@@ -22,8 +22,8 @@ class RunReportQuery extends FiltersQuery {
 
 class ExportLogQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() userId?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
 }
 
 @ApiTags('Reports')

@@ -19,6 +19,7 @@ import { tenants } from '../organization/organization.schema';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { OrganizationService } from '../organization/organization.service';
 import { CreateCompanyDto, PlanInputDto, PlatformMetricsDto, PlatformTenantDto, SubscriptionPatchDto, TenantListQuery } from './platform.dto';
+import { dayStart, dayAfter } from '../../core/http/dates';
 
 // platform_audit_logs (db/schema.sql): every owner-console action, never changed.
 export const platformAuditLogs = pgTable('platform_audit_logs', {
@@ -338,7 +339,7 @@ export class PlatformService {
           f.tenantId ? eq(billingInvoices.tenantId, f.tenantId) : undefined,
           f.status ? eq(billingInvoices.status, f.status as 'open') : undefined,
           f.from ? gte(billingInvoices.issueDate, f.from) : undefined,
-          f.to ? lt(billingInvoices.issueDate, isoDate(addDays(new Date(`${f.to}T00:00:00Z`), 1))) : undefined,
+          f.to ? lt(billingInvoices.issueDate, isoDate(dayAfter(f.to))) : undefined,
         ),
       )
       .orderBy(desc(billingInvoices.issueDate), desc(billingInvoices.number))
@@ -471,8 +472,8 @@ export class PlatformService {
       .where(
         and(
           tenantId ? eq(platformAuditLogs.tenantId, tenantId) : undefined,
-          from ? gte(platformAuditLogs.createdAt, new Date(`${from}T00:00:00Z`)) : undefined,
-          to ? lt(platformAuditLogs.createdAt, addDays(new Date(`${to}T00:00:00Z`), 1)) : undefined,
+          from ? gte(platformAuditLogs.createdAt, dayStart(from)) : undefined,
+          to ? lt(platformAuditLogs.createdAt, dayAfter(to)) : undefined,
           after !== undefined ? lt(platformAuditLogs.id, after) : undefined,
         ),
       )
@@ -535,4 +536,3 @@ function planConflict(e: unknown): never {
   if (pgCode(e) === '23514') throw Problems.validation([{ field: 'maxSeats', message: 'must be at least minSeats' }]);
   throw e;
 }
-

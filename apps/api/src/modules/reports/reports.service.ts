@@ -13,7 +13,8 @@ import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagi
 import { QueueService, TenantJob } from '../../core/queue/queue.service';
 import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
-import { dayAfter, dayStart, exportPage, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
+import { dayAfter, dayStart } from '../../core/http/dates';
+import { exportPage, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { NotificationsService } from '../notifications/notifications.service';

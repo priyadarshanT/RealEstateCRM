@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 import { and, asc, eq, gte, inArray, lte, sql, SQL } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
@@ -9,7 +9,7 @@ import { ProblemException, Problems } from '../../core/errors/problem';
 import { pgCode, PG_FOREIGN_KEY_VIOLATION, PG_UNIQUE_VIOLATION } from '../../core/errors/pg';
 import { versionConflict } from '../../core/http/etag';
 import { decodeCursor, PageInfo, PageQuery, toPage } from '../../core/http/pagination';
-import { IsUuid } from '../../core/http/validators';
+import { IsDateOnly, IsUuid } from '../../core/http/validators';
 import { adSpendDaily, CampaignRow, campaigns } from './marketing.schema';
 
 const MONEY = /^\d+(\.\d{1,2})?$/;
@@ -46,12 +46,12 @@ export class CampaignInputDto {
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(100) externalId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
   @ApiPropertyOptional({ enum: STATUSES }) @IsOptional() @IsIn(STATUSES) status?: CampaignRow['status'];
-  @ApiPropertyOptional({ type: String, format: 'date', nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString({ strict: true }) startsOn?: string | null;
-  @ApiPropertyOptional({ type: String, format: 'date', nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString({ strict: true }) endsOn?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateOnly() startsOn?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateOnly() endsOn?: string | null;
 }
 
 export class AdSpendDto {
-  @ApiProperty({ format: 'date' }) @IsDateString({ strict: true }) spendDate!: string;
+  @ApiProperty({ format: 'date' }) @IsDateOnly() spendDate!: string;
   @ApiProperty() @Matches(MONEY, { message: 'amount must be a positive decimal with up to 2 places' }) amount!: string;
   @ApiProperty({ pattern: '^[A-Z]{3}$' }) @Matches(/^[A-Z]{3}$/) currency!: string;
   @ApiPropertyOptional({ enum: ['api', 'manual'] }) @IsOptional() @IsIn(['api', 'manual']) entryMethod?: 'api' | 'manual';
@@ -66,8 +66,8 @@ export class EnterSpendDto {
 }
 
 export class SpendQuery {
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) from?: string;
-  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateString({ strict: true }) to?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() from?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() to?: string;
 }
 
 /** Ad campaigns and daily spend (SRS §8.3: spend imported daily from ad accounts or entered manually). */

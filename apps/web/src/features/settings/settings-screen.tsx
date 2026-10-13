@@ -5,15 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AssignmentTab } from './assignment-tab';
 import { ConnectionsTab } from './connections-tab';
 import { LeadConfigTab } from './lead-config-tab';
+import { TemplatesTab } from '@/features/messaging/templates-tab';
 import { MarketingTab } from './marketing-tab';
 import { RulesTab } from './rules-tab';
 
-// Phase 1 settings (SRS §11.5). Templates (Phase 2) and invoice numbering (Phase 3) arrive with their modules.
+// Settings (SRS §11.5). Invoice numbering (Phase 3) arrives with the finance module.
 const TABS = [
   { key: 'connections', label: 'Connections' },
   { key: 'stages', label: 'Stages, reasons & sources' },
   { key: 'assignment', label: 'Assignment' },
   { key: 'rules', label: 'Response time, scoring & currency' },
+  { key: 'templates', label: 'Templates' },
   { key: 'marketing', label: 'Campaigns & events' },
 ];
 
@@ -30,6 +32,7 @@ export function SettingsScreen() {
       {tab === 'stages' ? <LeadConfigTab /> : null}
       {tab === 'assignment' ? <AssignmentTab /> : null}
       {tab === 'rules' ? <RulesTab /> : null}
+      {tab === 'templates' ? <TemplatesTab /> : null}
       {tab === 'marketing' ? <MarketingTab /> : null}
     </div>
   );

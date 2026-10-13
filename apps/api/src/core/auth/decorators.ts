@@ -11,6 +11,9 @@ export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUB
 /** Permission key from the `permissions` table, matching `x-permission` in api/openapi.yaml. */
 export const RequirePermission = (key: string): MethodDecorator & ClassDecorator => SetMetadata(REQUIRED_PERMISSION, key);
 
+/** Any one of these permissions is enough (x-permission "a or b" in api/openapi.yaml). */
+export const RequireAnyPermission = (...keys: string[]): MethodDecorator & ClassDecorator => SetMetadata(REQUIRED_PERMISSION, keys);
+
 export const CurrentPrincipal = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): Principal | undefined => ctx.switchToHttp().getRequest<AuthenticatedRequest>().principal,
 );

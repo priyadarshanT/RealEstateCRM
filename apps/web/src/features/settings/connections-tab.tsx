@@ -7,16 +7,17 @@ import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
 import { formatDateTime } from '@/core/format';
+import { ConnectSenderDialog } from './connect-sender-dialog';
 
 type Integration = Schemas['Integration'];
 
-const LABEL: Partial<Record<Integration['provider'], string>> = { meta: 'Meta lead ads' };
+const LABEL: Partial<Record<Integration['provider'], string>> = { meta: 'Meta lead ads', whatsapp_cloud: 'WhatsApp (Meta, direct)', email_ses: 'Email sender' };
 
 const STATUS_TONE = { connected: 'success', pending: 'warning', error: 'danger', disconnected: 'neutral' } as const;
 
 /**
- * Connections (SRS §11.3, wireframe "Settings and integrations"). Phase 1 connects Meta lead ads;
- * the other providers arrive with Phase 2. Each row: status, last sync, records, failures, Test / Retry / Disconnect.
+ * Connections (SRS §11.3, wireframe "Settings and integrations"): Meta lead ads, the WhatsApp Business number
+ * and the email sender. Each row: status, last sync, records, failures, Test / Retry / Disconnect.
  */
 export function ConnectionsTab() {
   const qc = useQueryClient();
@@ -25,6 +26,7 @@ export function ConnectionsTab() {
   const list = useQuery({ queryKey: ['integrations'], queryFn: async () => unwrap(await api.GET('/integrations')).data });
   const [testResult, setTestResult] = useState<{ ok: boolean; detail?: string } | null>(null);
   const [eventsFor, setEventsFor] = useState<Integration | null>(null);
+  const [sender, setSender] = useState<'whatsapp_cloud' | 'email_ses' | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['integrations'] });
 
   const connect = useMutation({
@@ -45,7 +47,13 @@ export function ConnectionsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setSender('whatsapp_cloud')}>
+          Connect WhatsApp
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setSender('email_ses')}>
+          Connect email sender
+        </Button>
         <Button size="sm" disabled={connect.isPending} onClick={() => connect.mutate()}>
           Connect Meta lead ads
         </Button>
@@ -112,6 +120,7 @@ export function ConnectionsTab() {
         </Alert>
       ))}
       <EventsDialog integration={eventsFor} onClose={() => setEventsFor(null)} />
+      <ConnectSenderDialog provider={sender} onClose={() => setSender(null)} />
     </div>
   );
 }

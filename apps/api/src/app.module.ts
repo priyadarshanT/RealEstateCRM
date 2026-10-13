@@ -9,6 +9,7 @@ import { EventsModule } from './modules/events/events.service';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -18,7 +19,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 
 // Composition root: shared core plus one import per business module.
 @Module({
-  imports: [CoreModule, OrganizationModule, SettingsModule, LeadsModule, AssignmentModule, NotificationsModule, TasksModule, ScoringModule, MarketingModule, EventsModule, IntegrationsModule, DashboardModule, ReportsModule, BillingModule, PlatformModule],
+  imports: [CoreModule, OrganizationModule, SettingsModule, LeadsModule, AssignmentModule, NotificationsModule, TasksModule, ScoringModule, MarketingModule, EventsModule, IntegrationsModule, MessagingModule, DashboardModule, ReportsModule, BillingModule, PlatformModule],
   providers: [...requestGuards],
 })
 export class AppModule {}

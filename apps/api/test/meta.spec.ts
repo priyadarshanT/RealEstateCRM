@@ -76,7 +76,7 @@ describe('Meta lead ads', () => {
 
   it('connects a page through OAuth; the state is signed and single-use', async () => {
     const phase2 = await admin.post('/api/v1/integrations').send({ provider: 'bayut' }).expect(400);
-    expect(phase2.body.errors[0].message).toMatch(/Phase 2/);
+    expect(phase2.body.errors[0].message).toMatch(/cannot be connected yet/);
 
     const start = await admin.post('/api/v1/integrations').send({ provider: 'meta' }).expect(201);
     integrationId = start.body.integrationId;

@@ -3884,8 +3884,8 @@ paths:
       - Messaging
       summary: List message templates
       operationId: listMessageTemplates
-      description: '**Permission:** `messages.send`'
-      x-permission: messages.send
+      description: '**Permission:** `messages.send or settings.manage`'
+      x-permission: messages.send or settings.manage
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -3962,8 +3962,8 @@ paths:
       - Messaging
       summary: Get message template
       operationId: getMessageTemplate
-      description: '**Permission:** `messages.send`'
-      x-permission: messages.send
+      description: '**Permission:** `messages.send or settings.manage`'
+      x-permission: messages.send or settings.manage
       parameters:
       - $ref: '#/components/parameters/Id'
       responses:

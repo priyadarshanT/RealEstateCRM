@@ -264,7 +264,7 @@ op("post","/conversations/{id}/read","Messaging","Mark conversation read","messa
 op("post","/leads/{id}/messages","Messaging","Send message to lead","messages.send",req=ref("MessageSend"),res=ref("Message"),code="202",params=["IdempotencyKey"],errors=("422",),resdesc="Queued for sending",desc="422 OPTED_OUT, TEMPLATE_REQUIRED (WhatsApp outside the 24-hour window).")
 op("get","/leads/{id}/consents","Messaging","Get lead consent history","leads.view",res={"type":"object","properties":{"data":arr(ref("Consent"))}})
 op("post","/leads/{id}/consents","Messaging","Record consent","leads.edit",req=ref("Consent"),res=ref("Consent"),code="201")
-crud("/message-templates","Messaging","MessageTemplate","messages.send","settings.manage","message template","message templates",filters=[q("channel",STR),q("status",STR)])
+crud("/message-templates","Messaging","MessageTemplate","messages.send or settings.manage","settings.manage","message template","message templates",filters=[q("channel",STR),q("status",STR)])
 op("post","/message-templates/{id}/submit","Messaging","Submit template to WhatsApp","settings.manage",res=ref("MessageTemplate"),desc="Sends a WhatsApp template to Meta for approval; status updates by webhook.")
 op("get","/message-campaigns","Messaging","List bulk campaigns","campaigns.create",res=page(ref("MessageCampaign")),params=["Cursor","Limit",q("status",STR)])
 op("post","/message-campaigns","Messaging","Create bulk campaign","campaigns.create",req=ref("MessageCampaign"),res=ref("MessageCampaign"),code="201")

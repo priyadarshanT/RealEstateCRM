@@ -1,18 +1,19 @@
 'use client';
 
 import { Alert, Badge, Button, Dialog, DialogContent, Field, Select, Textarea } from '@crm/ui';
-import { CalendarPlus, NotebookPen, Phone, Share2, UserCog } from 'lucide-react';
+import { CalendarPlus, Mail, MessageCircle, NotebookPen, Phone, Share2, UserCog } from 'lucide-react';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { byId, useColleagues, useReasons, useUsers } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
+import { SendMessageDialog } from '@/features/messaging/send-message-dialog';
 import { OutcomeForm } from '@/features/tasks/outcome-form';
 import { TaskDialog } from '@/features/tasks/task-dialog';
 import { useLeadMutations, useShares, type Lead } from './leads-api';
 
-type Open = 'note' | 'call' | 'schedule' | 'share' | 'assign' | null;
+type Open = 'note' | 'call' | 'schedule' | 'share' | 'assign' | 'whatsapp' | 'email' | null;
 
-/** Lead page actions (SRS §2.14, §2.16–17): note, call, schedule, share, assign. */
+/** Lead page actions (SRS §2.14, §2.16–17, §5.1): note, call, WhatsApp, email, schedule, share, assign. */
 export function LeadActions({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
   const can = useCan();
   const me = useMe();
@@ -31,6 +32,16 @@ export function LeadActions({ lead, canEdit }: { lead: Lead; canEdit: boolean })
             <Button variant="outline" size="sm" onClick={() => setOpen('call')}>
               <Phone /> Log call
             </Button>
+            {can('messages.send') ? (
+              <>
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => setOpen('whatsapp')}>
+                  <MessageCircle /> WhatsApp
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setOpen('email')}>
+                  <Mail /> Email
+                </Button>
+              </>
+            ) : null}
             <Button variant="outline" size="sm" onClick={() => setOpen('schedule')}>
               <CalendarPlus /> Schedule
             </Button>
@@ -53,6 +64,13 @@ export function LeadActions({ lead, canEdit }: { lead: Lead; canEdit: boolean })
       <TaskDialog open={open === 'schedule'} onOpenChange={(v) => setOpen(v ? 'schedule' : null)} leadId={lead.id} leadName={lead.fullName} />
       <ShareDialog lead={lead} open={open === 'share'} onClose={() => setOpen(null)} />
       <AssignDialog lead={lead} open={open === 'assign'} onClose={() => setOpen(null)} />
+      <SendMessageDialog
+        leadId={lead.id}
+        leadName={lead.fullName}
+        channel={open === 'whatsapp' || open === 'email' ? open : null}
+        address={open === 'whatsapp' ? lead.phonePrimary : lead.email}
+        onClose={() => setOpen(null)}
+      />
     </>
   );
 }

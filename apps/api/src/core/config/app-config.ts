@@ -46,6 +46,11 @@ const schema = z
     /** Email: AWS SES in AWS; "log" writes emails to the server log (local development). */
     MAIL_MODE: z.enum(['ses', 'log']).default('log'),
     MAIL_FROM: z.string().default('Dubai Real Estate CRM <no-reply@crm.example.ae>'),
+    /**
+     * WhatsApp and lead email (SRS §5): "live" sends through the company's connected WhatsApp Business number and
+     * SES; "simulate" (local development and tests) accepts and logs messages without calling Meta or AWS.
+     */
+    MESSAGING_MODE: z.enum(['live', 'simulate']).default('simulate'),
     /** PDF maker (Gotenberg 8, architecture §2). */
     GOTENBERG_URL: z.string().url().default('http://localhost:3001'),
     AUTH_MODE: z.enum(['cognito', 'dev']).default('cognito'),
@@ -62,6 +67,9 @@ const schema = z
     }
     if (env.NODE_ENV === 'production' && !env.TURNSTILE_SECRET) {
       ctx.addIssue({ code: 'custom', path: ['TURNSTILE_SECRET'], message: 'the bot check is required in production' });
+    }
+    if (env.MESSAGING_MODE === 'simulate' && env.NODE_ENV === 'production') {
+      ctx.addIssue({ code: 'custom', path: ['MESSAGING_MODE'], message: 'production sends real messages (MESSAGING_MODE=live)' });
     }
     if (env.AUTH_MODE === 'dev' && env.NODE_ENV === 'production') {
       ctx.addIssue({ code: 'custom', path: ['AUTH_MODE'], message: 'dev login is not allowed in production' });

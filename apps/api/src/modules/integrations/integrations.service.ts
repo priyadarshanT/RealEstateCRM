@@ -11,6 +11,7 @@ import { ProblemException, Problems } from '../../core/errors/problem';
 import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagination';
 import { QueueService } from '../../core/queue/queue.service';
 import { SECRET_STORE, SecretPaths, SecretStore } from '../../core/secrets/secret-store';
+import { OrganizationService } from '../organization/organization.service';
 import { IntegrationRow, integrations, Provider, PROVIDERS, syncRuns, webhookEvents, WebhookEventRow } from './integrations.schema';
 import { META_API, MetaApi } from './meta/meta-api';
 
@@ -102,8 +103,11 @@ export class SyncRunPage {
   @ApiProperty({ type: PageInfo }) page!: PageInfo;
 }
 
-/** Providers connected in Phase 1 (SRS phases): Meta lead ads. The others arrive with Phase 2. */
-const PHASE_1_PROVIDERS: Provider[] = ['meta'];
+/** OAuth providers connected through the provider's consent screen (Meta lead ads). */
+const OAUTH_PROVIDERS: Provider[] = ['meta'];
+/** Key-based senders (SRS §5): the company's WhatsApp Business number and its email sender. */
+const KEY_PROVIDERS: Provider[] = ['whatsapp_cloud', 'email_ses'];
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OAUTH_STATE_MINUTES = 10;
 
 /**
@@ -120,6 +124,7 @@ export class IntegrationsService {
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(META_API) private readonly meta: MetaApi,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly organization: OrganizationService,
   ) {}
 
   async list(p: Principal): Promise<IntegrationDto[]> {
@@ -143,8 +148,9 @@ export class IntegrationsService {
 
   /** Starts a connection. OAuth providers return the URL to open; the callback finishes it. */
   async connect(p: Principal, body: IntegrationConnectDto): Promise<ConnectStartDto> {
-    if (!PHASE_1_PROVIDERS.includes(body.provider)) {
-      throw Problems.validation([{ field: 'provider', message: `${body.provider} is connected from Phase 2 (SRS phases)` }]);
+    if (KEY_PROVIDERS.includes(body.provider)) return this.connectKeyBased(p, body);
+    if (!OAUTH_PROVIDERS.includes(body.provider)) {
+      throw Problems.validation([{ field: 'provider', message: `${body.provider} cannot be connected yet` }]);
     }
     if (!this.config.META_APP_ID || !this.config.META_APP_SECRET) {
       throw new ProblemException(422, 'INTEGRATION_NOT_CONFIGURED', 'Meta is not set up', 'The Meta app ID and secret are missing on the server.');
@@ -163,6 +169,80 @@ export class IntegrationsService {
     const state = this.signState({ t: p.tenantId, i: row!.id, u: p.userId, n: nonce, e: Date.now() + OAUTH_STATE_MINUTES * 60_000 });
     await this.audit.record('create', 'integrations', row!.id, { provider: [null, body.provider] });
     return { integrationId: row!.id, authorizeUrl: this.meta.authorizeUrl(state, this.redirectUri(body.provider)) };
+  }
+
+  /**
+   * WhatsApp Business number (Meta Cloud API) or email sender. Credentials go to the secret store, never the
+   * database. WhatsApp can be connected only after our team has verified the company's licence (SRS §5.8, §12).
+   */
+  private async connectKeyBased(p: Principal, body: IntegrationConnectDto): Promise<ConnectStartDto> {
+    const input = body.settings ?? {};
+    const str = (k: string) => (typeof input[k] === 'string' && (input[k] as string).trim() ? (input[k] as string).trim() : undefined);
+    let externalAccountId: string;
+    let label: string;
+    let settings: Record<string, unknown>;
+    let secret: Record<string, string> | undefined;
+
+    if (body.provider === 'whatsapp_cloud') {
+      const tenant = await this.organization.getProfile(p.tenantId);
+      if (tenant.verificationStatus !== 'verified') {
+        throw new ProblemException(422, 'LICENCE_NOT_VERIFIED', 'Licence not verified yet', 'WhatsApp can be connected once our team has verified your company licence.');
+      }
+      const phoneNumberId = str('phoneNumberId');
+      const wabaId = str('wabaId');
+      const accessToken = str('accessToken');
+      const errors = [
+        ...(phoneNumberId ? [] : [{ field: 'settings.phoneNumberId', message: 'required' }]),
+        ...(wabaId ? [] : [{ field: 'settings.wabaId', message: 'required' }]),
+        ...(accessToken || this.config.MESSAGING_MODE === 'simulate' ? [] : [{ field: 'settings.accessToken', message: 'required' }]),
+      ];
+      if (errors.length) throw Problems.validation(errors);
+      externalAccountId = phoneNumberId!;
+      label = body.accountLabel ?? str('displayPhone') ?? 'WhatsApp Business';
+      settings = { phoneNumberId, wabaId, ...(str('displayPhone') ? { displayPhone: str('displayPhone') } : {}) };
+      secret = accessToken ? { accessToken } : undefined;
+    } else {
+      const fromAddress = str('fromAddress')?.toLowerCase();
+      if (!fromAddress || !EMAIL.test(fromAddress)) throw Problems.validation([{ field: 'settings.fromAddress', message: 'a valid email address is required' }]);
+      externalAccountId = fromAddress;
+      label = body.accountLabel ?? fromAddress;
+      settings = { fromAddress, ...(str('fromName') ? { fromName: str('fromName') } : {}) };
+    }
+
+    const [existing] = await this.db.current
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.provider, body.provider), eq(integrations.externalAccountId, externalAccountId), eq(integrations.scope, 'tenant')))
+      .limit(1);
+    const values = { status: 'connected' as const, accountLabel: label, settings, connectedBy: p.userId, connectedAt: new Date(), lastError: null, updatedAt: new Date() };
+    const [row] = existing
+      ? await this.db.current.update(integrations).set(values).where(eq(integrations.id, existing.id)).returning()
+      : await this.db.current.insert(integrations).values({ tenantId: p.tenantId, provider: body.provider, scope: 'tenant', externalAccountId, ...values }).returning();
+    if (secret) {
+      const secretRef = this.paths.integration(row!.tenantId, row!.id);
+      await this.secrets.put(secretRef, JSON.stringify(secret));
+      await this.db.current.update(integrations).set({ secretRef }).where(eq(integrations.id, row!.id));
+    }
+    await this.audit.record(existing ? 'update' : 'create', 'integrations', row!.id, { provider: [null, body.provider], status: [existing?.status ?? null, 'connected'] });
+    return { integrationId: row!.id, authorizeUrl: null };
+  }
+
+  /** The company's connected sender for a channel (WhatsApp number or email sender), if any. */
+  async connectedSender(provider: 'whatsapp_cloud' | 'email_ses'): Promise<IntegrationRow | undefined> {
+    const [row] = await this.db.current
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.provider, provider), eq(integrations.scope, 'tenant'), eq(integrations.status, 'connected')))
+      .orderBy(integrations.connectedAt)
+      .limit(1);
+    return row;
+  }
+
+  /** Stored credentials of an integration (secret store), parsed. */
+  async credentials(row: IntegrationRow): Promise<Record<string, string>> {
+    if (!row.secretRef) return {};
+    const raw = await this.secrets.get(row.secretRef);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
   }
 
   /**
@@ -234,6 +314,7 @@ export class IntegrationsService {
   async test(id: string): Promise<{ ok: boolean; detail: string }> {
     const row = await this.get(id);
     if (row.status !== 'connected' || !row.externalAccountId) return { ok: false, detail: `Not connected (status: ${row.status})` };
+    if (row.provider !== 'meta') return { ok: true, detail: this.config.MESSAGING_MODE === 'simulate' ? 'Connected (messages are simulated in this environment)' : 'Connected' };
     const token = await this.pageToken(row);
     if (!token) return { ok: false, detail: 'The access token is missing; connect again' };
     const result = await this.meta.check(row.externalAccountId, token);

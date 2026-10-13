@@ -7,6 +7,7 @@ import { errorMessage } from '@/core/api';
 import { formatRelativeDay } from '@/core/format';
 import { useCan, useMe } from '@/core/session';
 import { LeadActions } from './lead-actions';
+import { ConsentCard } from '@/features/messaging/consent-card';
 import { EnquiriesCard, LeadDetailsCard, ScoreCard } from './lead-details-card';
 import { LeadTimeline } from './lead-timeline';
 import { useLead, useLeadMutations } from './leads-api';
@@ -60,6 +61,7 @@ export function LeadPageScreen({ id }: { id: string }) {
         <div className="space-y-3">
           <LeadDetailsCard lead={l} canEdit={canEdit} />
           <ScoreCard score={l.score} />
+          <ConsentCard leadId={l.id} canEdit={canEdit} timeZone={tz} />
           <EnquiriesCard leadId={l.id} />
         </div>
         <div className="space-y-3">

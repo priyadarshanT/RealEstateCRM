@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, or, sql, SQL } from 'drizzle-orm';
+import { AnyColumn, and, eq, inArray, or, sql, SQL } from 'drizzle-orm';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
 import { OrganizationDirectory } from '../organization/directory.service';
@@ -27,6 +27,16 @@ export class LeadScope {
     if (p.dataScope === 'own') return or(own, shared);
     const teamIds = await this.directory.scopeTeamIds(p.userId, p.dataScope);
     return teamIds.length ? or(own, shared, inArray(leads.teamId, teamIds)) : or(own, shared);
+  }
+
+  /**
+   * For other modules that store a lead ID (conversations, meetings…): "column is a lead this principal may see",
+   * as a subquery owned by the leads module, so callers never read the leads table themselves.
+   */
+  async visibleLeadIdIn(p: Principal, column: SQL | AnyColumn): Promise<SQL | undefined> {
+    const cond = await this.visible(p);
+    if (!cond) return undefined;
+    return sql`${column} IN (SELECT ${leads.id} FROM ${leads} WHERE ${cond})`;
   }
 
   /** Leads within the principal's role scope only (not through shares): owner or a manager above them. */

@@ -85,7 +85,8 @@ export function loadEnvFile(): void {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnvFile();
-  const parsed = schema.safeParse(env);
+  // An empty value (e.g. `S3_ENDPOINT=` copied from .env.example) means "not set", so defaults and optional fields apply.
+  const parsed = schema.safeParse(Object.fromEntries(Object.entries(env).filter(([, value]) => value !== '')));
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Invalid configuration: ${issues}`);

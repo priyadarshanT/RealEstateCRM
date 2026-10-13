@@ -1,18 +1,37 @@
 'use client';
 
-import { Alert, Badge, EmptyState, Loading, Select, cn } from '@crm/ui';
+import { Alert, Badge, EmptyState, Loading, Select, TabStrip, cn } from '@crm/ui';
 import { Mail, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { formatRelativeDay } from '@/core/format';
-import { useMe } from '@/core/session';
+import { useCan, useMe } from '@/core/session';
+import { CampaignsPanel } from './campaigns-panel';
 import { Composer } from './composer';
 import { MessageBubble } from './message-bubble';
 import { CHANNEL_LABEL, useConversations, useLeadNames, useMarkRead, useMessages, type Channel, type Conversation } from './messaging-api';
 
-/** WhatsApp & Email (wireframe): conversations with each lead on the left, the thread and reply box on the right. */
+/** WhatsApp & Email (wireframe): conversations with each lead, and bulk campaigns for managers. */
 export function InboxScreen() {
+  const can = useCan();
+  const tabs = [
+    ...(can('messages.send') ? [{ key: 'conversations', label: 'Conversations' }] : []),
+    ...(can('campaigns.create') || can('campaigns.approve') ? [{ key: 'campaigns', label: 'Bulk campaigns' }] : []),
+  ];
+  const [tab, setTab] = useState<string | null>(null);
+  const current = tab ?? tabs[0]?.key;
+  return (
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">WhatsApp & Email</h1>
+      {tabs.length > 1 ? <TabStrip items={tabs} value={current ?? ''} onChange={setTab} /> : null}
+      {current === 'campaigns' ? <CampaignsPanel /> : current === 'conversations' ? <Conversations /> : null}
+    </div>
+  );
+}
+
+/** Conversations with each lead on the left, the thread and reply box on the right. */
+function Conversations() {
   const me = useMe();
   const tz = me.data?.user.timezone;
   const [channel, setChannel] = useState<Channel | ''>('');
@@ -33,7 +52,6 @@ export function InboxScreen() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-semibold">WhatsApp & Email</h1>
       <div className="flex flex-wrap items-center gap-2">
         <Select className="h-8 w-auto text-xs" value={channel} onChange={(e) => setChannel(e.target.value as Channel | '')} aria-label="Channel">
           <option value="">All channels</option>

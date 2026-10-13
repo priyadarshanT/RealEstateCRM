@@ -43,6 +43,8 @@ describe('messaging', () => {
   });
 
   it('WhatsApp connects only after the licence is verified; email connects with a sender address', async () => {
+    // Other test files may have verified tenant B already: start from "pending".
+    await ownerQuery(`UPDATE tenants SET verification_status = 'pending', verified_at = NULL WHERE id = $1`, [TENANT_B]);
     const blocked = await admin.post('/api/v1/integrations').send({ provider: 'whatsapp_cloud', settings: { phoneNumberId: '1001', wabaId: '2002' } }).expect(422);
     expect(blocked.body.code).toBe('LICENCE_NOT_VERIFIED');
     await ownerQuery(`UPDATE tenants SET verification_status = 'verified', verified_at = now() WHERE id = $1`, [TENANT_B]);

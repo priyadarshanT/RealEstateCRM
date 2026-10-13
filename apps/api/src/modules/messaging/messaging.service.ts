@@ -38,6 +38,8 @@ const LABEL: Record<Channel, string> = { whatsapp: 'WhatsApp', email: 'Email' };
  */
 @Injectable()
 export class MessagingService implements OnModuleInit {
+  private readonly deliveredListeners: ((m: { campaignId: string | null; leadId: string; status: 'sent' | 'failed' }) => Promise<void>)[] = [];
+
   constructor(
     private readonly db: DbService,
     private readonly leads: LeadsService,
@@ -51,6 +53,11 @@ export class MessagingService implements OnModuleInit {
 
   onModuleInit(): void {
     this.queue.register<SendJob>('send-message', (job) => this.deliver(job.messageId, job.params));
+  }
+
+  /** Called after each send attempt with its result (bulk campaigns track their recipients this way). */
+  onDelivered(listener: (m: { campaignId: string | null; leadId: string; status: 'sent' | 'failed' }) => Promise<void>): void {
+    this.deliveredListeners.push(listener);
   }
 
   // ---------------------------------------------------------------- sending
@@ -121,6 +128,7 @@ export class MessagingService implements OnModuleInit {
     const [message] = await this.db.current.select().from(messages).where(eq(messages.id, messageId)).limit(1);
     if (!message || message.status !== 'queued') return;
     const [conversation] = await this.db.current.select().from(conversations).where(eq(conversations.id, message.conversationId)).limit(1);
+    let outcome: 'sent' | 'failed' = 'failed';
     try {
       const sender = await this.integrations.get(conversation!.integrationId);
       if (sender.status !== 'connected') throw new Error(`The ${LABEL[conversation!.channel]} connection is ${sender.status}`);
@@ -138,12 +146,14 @@ export class MessagingService implements OnModuleInit {
         outbound,
       );
       await this.db.current.update(messages).set({ status: 'sent', providerMessageId: result.providerMessageId, sentAt: new Date() }).where(eq(messages.id, messageId));
+      outcome = 'sent';
     } catch (err) {
       await this.db.current
         .update(messages)
         .set({ status: 'failed', errorCode: 'SEND_FAILED', errorMessage: (err as Error).message.slice(0, 500) })
         .where(eq(messages.id, messageId));
     }
+    for (const l of this.deliveredListeners) await l({ campaignId: message.campaignId, leadId: message.leadId, status: outcome });
   }
 
   // ---------------------------------------------------------------- conversations

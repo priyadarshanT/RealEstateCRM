@@ -151,7 +151,8 @@ describe('Meta lead ads', () => {
     expect(events.body.data).toHaveLength(1);
     expect(events.body.data[0]).toMatchObject({ externalEventId: 'LG-100', status: 'processed', attempts: 1 });
     const list = await admin.get('/api/v1/integrations').expect(200);
-    expect(list.body.data[0]).toMatchObject({ recordsReceived30d: 1, failures30d: 0 });
+    // Other test files may connect more providers in tenant B (e.g. an email sender): find this one by ID.
+    expect(list.body.data.find((i: { id: string }) => i.id === integrationId)).toMatchObject({ recordsReceived30d: 1, failures30d: 0 });
   });
 
   it('a lead for an unknown page is stored as ignored', async () => {

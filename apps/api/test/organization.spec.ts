@@ -102,6 +102,20 @@ describe('organization module', () => {
       await agent.get('/api/v1/users').expect(403);
     });
 
+    it('any signed-in user lists colleagues for share and assign pickers: active users of the own company, name and team only', async () => {
+      for (const who of [agent, leader]) {
+        const res = await who.get('/api/v1/users/directory').expect(200);
+        const ids = res.body.data.map((c: { id: string }) => c.id);
+        expect(ids).toEqual(expect.arrayContaining([USERS.adminA.id, USERS.saraA.id, USERS.aliA.id, USERS.miraA.id]));
+        expect(ids).not.toContain(USERS.adminB.id);
+        for (const c of res.body.data) expect(Object.keys(c).sort()).toEqual(['fullName', 'id', 'teamId']);
+      }
+      const inactive = await ownerQuery<{ id: string }>("SELECT id FROM users WHERE tenant_id = $1 AND status <> 'active'", [USERS.adminA.tenant]);
+      const listed = (await agent.get('/api/v1/users/directory').expect(200)).body.data.map((c: { id: string }) => c.id);
+      for (const u of inactive) expect(listed).not.toContain(u.id);
+      expect((await adminB.get('/api/v1/users/directory').expect(200)).body.data.map((c: { id: string }) => c.id)).not.toContain(USERS.aliA.id);
+    });
+
     it('lists users by name with cursor paging and search', async () => {
       const first = await admin.get('/api/v1/users?limit=2').expect(200);
       expect(first.body.data).toHaveLength(2);

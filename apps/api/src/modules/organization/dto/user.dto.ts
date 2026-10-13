@@ -60,6 +60,21 @@ export class UserPage {
   @ApiProperty({ type: PageInfo }) page!: PageInfo;
 }
 
+// components.schemas.Colleague: name and team only, for share and assign pickers (no email, phone or role).
+export class ColleagueDto {
+  @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) teamId!: string | null;
+
+  static from(u: Pick<UserRow, 'id' | 'fullName' | 'teamId'>): ColleagueDto {
+    return { id: u.id, fullName: u.fullName, teamId: u.teamId };
+  }
+}
+
+export class ColleagueList {
+  @ApiProperty({ type: [ColleagueDto] }) data!: ColleagueDto[];
+}
+
 export class UserListQuery extends PageQuery {
   @ApiPropertyOptional({ enum: ['invited', 'active', 'inactive'] })
   @IsOptional()

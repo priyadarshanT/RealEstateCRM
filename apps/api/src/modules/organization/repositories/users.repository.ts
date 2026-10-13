@@ -77,6 +77,15 @@ export class UsersRepository {
       .limit(filter.limit + 1);
   }
 
+  /** Active users of the current tenant (row-level security), name and team only, by name. */
+  async listActiveNames(): Promise<Pick<UserRow, 'id' | 'fullName' | 'teamId'>[]> {
+    return this.db.current
+      .select({ id: users.id, fullName: users.fullName, teamId: users.teamId })
+      .from(users)
+      .where(eq(users.status, 'active'))
+      .orderBy(asc(users.fullName), asc(users.id));
+  }
+
   async emailExists(email: string, exceptId?: string): Promise<boolean> {
     const rows = await this.db.current
       .select({ id: users.id })

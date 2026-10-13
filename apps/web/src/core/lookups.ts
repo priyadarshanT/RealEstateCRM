@@ -41,7 +41,19 @@ export function useCampaigns() {
   });
 }
 
-/** Company users. Listing users needs users.manage; others only know themselves. */
+/**
+ * Active colleagues (id, name, team) for share and assign pickers and for showing names. Any signed-in user
+ * can load it (GET /users/directory); full user details stay behind users.manage (useUsers).
+ */
+export function useColleagues() {
+  return useQuery({
+    queryKey: ['colleagues'],
+    staleTime: LONG,
+    queryFn: async () => unwrap(await api.GET('/users/directory')).data,
+  });
+}
+
+/** Company users with full details, for user management. Needs users.manage; others only know themselves. */
 export function useUsers() {
   const can = useCan();
   const { data: me } = useMe();

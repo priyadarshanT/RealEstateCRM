@@ -4,7 +4,7 @@ import { Alert, Button, Dialog, DialogContent, Field, Select } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
-import { useReasons, useStages, useUsers } from '@/core/lookups';
+import { useColleagues, useReasons, useStages } from '@/core/lookups';
 import { useCan } from '@/core/session';
 import { useBulkLeads } from './leads-api';
 
@@ -79,7 +79,7 @@ function BulkDialog({
   onClose: () => void;
   onRun: (body: Omit<Schemas['BulkLeadAction'], 'leadIds'>) => void;
 }) {
-  const users = useUsers();
+  const colleagues = useColleagues();
   const stages = useStages();
   const [toUserId, setToUserId] = useState('');
   const [stageId, setStageId] = useState('');
@@ -101,9 +101,7 @@ function BulkDialog({
             <Field label="Assign to">
               <Select value={toUserId} onChange={(e) => setToUserId(e.target.value)}>
                 <option value="">Choose an agent</option>
-                {users.data
-                  ?.filter((u) => u.status === 'active')
-                  .map((u) => (
+                {colleagues.data?.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.fullName}
                     </option>

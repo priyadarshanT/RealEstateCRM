@@ -4,7 +4,7 @@ import { Alert, Badge, Button, Dialog, DialogContent, Field, Select, Textarea } 
 import { CalendarPlus, NotebookPen, Phone, Share2, UserCog } from 'lucide-react';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
-import { useReasons, useUsers } from '@/core/lookups';
+import { byId, useColleagues, useReasons, useUsers } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { OutcomeForm } from '@/features/tasks/outcome-form';
 import { TaskDialog } from '@/features/tasks/task-dialog';
@@ -104,7 +104,7 @@ function CallDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onClos
 }
 
 function ShareDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onClose: () => void }) {
-  const users = useUsers();
+  const colleagues = useColleagues();
   const shares = useShares(lead.id);
   const { share, unshare } = useLeadMutations(lead.id);
   const [userId, setUserId] = useState('');
@@ -133,8 +133,8 @@ function ShareDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onClo
             <Field label="Share with">
               <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
                 <option value="">Choose a user</option>
-                {users.data
-                  ?.filter((u) => u.status === 'active' && u.id !== lead.ownerUserId && !sharedIds.has(u.id))
+                {colleagues.data
+                  ?.filter((u) => u.id !== lead.ownerUserId && !sharedIds.has(u.id))
                   .map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.fullName}
@@ -165,7 +165,9 @@ function ShareDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onClo
 }
 
 function AssignDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onClose: () => void }) {
-  const users = useUsers();
+  const colleagues = useColleagues();
+  // Full user details (lead assignment on/off) only load for users.manage; the hint is shown when known.
+  const details = byId(useUsers().data);
   const reasons = useReasons('reassignment');
   const { assign } = useLeadMutations(lead.id);
   const [toUserId, setToUserId] = useState('');
@@ -181,12 +183,12 @@ function AssignDialog({ lead, open, onClose }: { lead: Lead; open: boolean; onCl
           <Field label="New owner">
             <Select value={toUserId} onChange={(e) => setToUserId(e.target.value)}>
               <option value="">Choose an agent</option>
-              {users.data
-                ?.filter((u) => u.status === 'active' && u.id !== lead.ownerUserId)
+              {colleagues.data
+                ?.filter((u) => u.id !== lead.ownerUserId)
                 .map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName}
-                    {u.receivesLeads ? '' : ' (not receiving leads)'}
+                    {details.get(u.id)?.receivesLeads === false ? ' (not receiving leads)' : ''}
                   </option>
                 ))}
             </Select>

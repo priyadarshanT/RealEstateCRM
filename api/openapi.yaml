@@ -407,6 +407,39 @@ paths:
           $ref: '#/components/responses/Unprocessable'
         '429':
           $ref: '#/components/responses/TooMany'
+  /users/directory:
+    get:
+      tags:
+      - Organization
+      summary: List colleagues
+      operationId: listColleagues
+      description: 'Active users of the company with name and team only, for the share and assign pickers (SRS §2.16, §4). Managing users uses GET /users (users.manage).
+
+
+        **Permission:** `(any signed-in user)`'
+      x-permission: (any signed-in user)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Colleague'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /roles:
     get:
       tags:
@@ -10540,6 +10573,25 @@ components:
       - email
       - fullName
       - roleId
+    Colleague:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        fullName:
+          type: string
+        teamId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+      required:
+      - id
+      - fullName
+      - teamId
+      description: An active user of the same company, as shown in share and assign pickers
     Role:
       type: object
       properties:

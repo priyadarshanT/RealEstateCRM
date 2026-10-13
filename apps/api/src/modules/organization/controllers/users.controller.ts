@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiOkResponse, ApiOperati
 import { Response } from 'express';
 import { RequirePermission } from '../../../core/auth/decorators';
 import { parseIfMatch, toEtag } from '../../../core/http/etag';
-import { CreateUserDto, DeactivateUserDto, ReceivesLeadsDto, UpdateUserDto, UserDto, UserListQuery, UserPage } from '../dto/user.dto';
+import { ColleagueList, CreateUserDto, DeactivateUserDto, ReceivesLeadsDto, UpdateUserDto, UserDto, UserListQuery, UserPage } from '../dto/user.dto';
 import { UserRow } from '../organization.schema';
 import { UsersService } from '../users.service';
 
@@ -28,6 +28,14 @@ export class UsersController {
   @ApiCreatedResponse({ type: UserDto })
   async create(@Body() body: CreateUserDto, @Res({ passthrough: true }) res: Response): Promise<UserDto> {
     return withEtag(res, await this.users.create(body));
+  }
+
+  // Declared before ':id' so "directory" is not read as a user ID. Any signed-in user: no RequirePermission.
+  @Get('directory')
+  @ApiOperation({ operationId: 'listColleagues', summary: 'List colleagues' })
+  @ApiOkResponse({ type: ColleagueList })
+  async directory(): Promise<ColleagueList> {
+    return { data: await this.users.directory() };
   }
 
   @Get(':id')

@@ -6,7 +6,7 @@ import { Pencil } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { ApiError, errorMessage } from '@/core/api';
 import { formatMoney, initials } from '@/core/format';
-import { byId, useCampaigns, useSources, useUsers } from '@/core/lookups';
+import { byId, useCampaigns, useColleagues, useSources } from '@/core/lookups';
 import { useInquiries, useLeadMutations, useShares, type Lead } from './leads-api';
 import { PriorityBadge } from './stage-badge';
 
@@ -14,7 +14,7 @@ import { PriorityBadge } from './stage-badge';
 export function LeadDetailsCard({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
-  const users = byId(useUsers().data);
+  const users = byId(useColleagues().data);
   const shares = useShares(lead.id);
   const { setPriority } = useLeadMutations(lead.id);
   const [editing, setEditing] = useState(false);

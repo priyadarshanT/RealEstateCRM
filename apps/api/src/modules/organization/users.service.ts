@@ -6,7 +6,7 @@ import { DbService } from '../../core/database/db.service';
 import { Problems } from '../../core/errors/problem';
 import { versionConflict } from '../../core/http/etag';
 import { Page, toPage } from '../../core/http/pagination';
-import { CreateUserDto, DeactivateUserDto, UpdateUserDto, UserDto, UserListQuery } from './dto/user.dto';
+import { ColleagueDto, CreateUserDto, DeactivateUserDto, UpdateUserDto, UserDto, UserListQuery } from './dto/user.dto';
 import { isSeatLimit, OrgErrors, pgCode, PG_UNIQUE_VIOLATION } from './organization.errors';
 import { USER_LEADS_PORT, UserLeadsPort } from './organization.ports';
 import { UserRow } from './organization.schema';
@@ -40,6 +40,11 @@ export class UsersService {
   async list(query: UserListQuery): Promise<Page<UserDto>> {
     const rows = await this.users.list(query);
     return toPage(rows, query.limit, userCursor, UserDto.from);
+  }
+
+  /** Colleagues for share and assign pickers (any signed-in user; SRS §2.16, §4). */
+  async directory(): Promise<ColleagueDto[]> {
+    return (await this.users.listActiveNames()).map(ColleagueDto.from);
   }
 
   async get(id: string): Promise<UserRow> {

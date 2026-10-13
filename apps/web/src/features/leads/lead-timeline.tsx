@@ -4,7 +4,7 @@ import { Card, CardBody, CardHeader, Loading } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
 import { ArrowRightLeft, CalendarCheck, Download, FileText, Mail, MessageCircle, NotebookPen, Phone, RotateCw, Share2, Sparkles, UserCog, type LucideIcon } from 'lucide-react';
 import { formatDateTime } from '@/core/format';
-import { byId, useUsers } from '@/core/lookups';
+import { byId, useColleagues } from '@/core/lookups';
 import { useTimeline } from './leads-api';
 
 const ICONS: Partial<Record<Schemas['Activity']['type'], LucideIcon>> = {
@@ -25,7 +25,7 @@ const ICONS: Partial<Record<Schemas['Activity']['type'], LucideIcon>> = {
 /** One timeline of everything that happened to the lead (SRS §2.13). History cannot be edited. */
 export function LeadTimeline({ leadId, timeZone }: { leadId: string; timeZone?: string }) {
   const timeline = useTimeline(leadId);
-  const users = byId(useUsers().data);
+  const users = byId(useColleagues().data);
 
   return (
     <Card>

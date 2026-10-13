@@ -166,6 +166,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List colleagues
+         * @description Active users of the company with name and team only, for the share and assign pickers (SRS §2.16, §4). Managing users uses GET /users (users.manage).
+         *
+         *     **Permission:** `(any signed-in user)`
+         */
+        get: operations["listColleagues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/roles": {
         parameters: {
             query?: never;
@@ -4696,6 +4718,13 @@ export interface components {
             languages?: string[];
             location?: string;
         };
+        /** @description An active user of the same company, as shown in share and assign pickers */
+        Colleague: {
+            /** Format: uuid */
+            readonly id: string;
+            fullName: string;
+            teamId: string | null;
+        };
         Role: {
             /** Format: uuid */
             readonly id: string;
@@ -6719,6 +6748,32 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listColleagues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Colleague"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["TooMany"];
         };
     };

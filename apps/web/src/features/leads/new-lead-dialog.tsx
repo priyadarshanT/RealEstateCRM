@@ -5,7 +5,7 @@ import type { Schemas } from '@crm/contracts';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { ApiError, errorMessage } from '@/core/api';
-import { byId, useCampaigns, useSources, useUsers } from '@/core/lookups';
+import { byId, useCampaigns, useColleagues, useSources } from '@/core/lookups';
 import { useCan } from '@/core/session';
 import { checkExisting, useCreateLead } from './leads-api';
 
@@ -17,8 +17,8 @@ export function NewLeadDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const can = useCan();
   const sources = useSources();
   const campaigns = useCampaigns();
-  const users = useUsers();
-  const userById = byId(users.data);
+  const colleagues = useColleagues();
+  const userById = byId(colleagues.data);
   const create = useCreateLead();
   const manual = sources.data?.find((s) => s.type === 'manual');
 
@@ -134,9 +134,7 @@ export function NewLeadDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <Field label="Agent (empty = assignment rules)">
               <Select value={form.ownerUserId ?? ''} onChange={(e) => set({ ownerUserId: e.target.value || undefined })}>
                 <option value="">Assign automatically</option>
-                {users.data
-                  ?.filter((u) => u.status === 'active')
-                  .map((u) => (
+                {colleagues.data?.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.fullName}
                     </option>

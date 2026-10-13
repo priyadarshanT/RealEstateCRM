@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { formatDateTime } from '@/core/format';
-import { byId, useUsers } from '@/core/lookups';
+import { byId, useColleagues } from '@/core/lookups';
 import { OutcomeForm } from './outcome-form';
 import { TaskDialog } from './task-dialog';
 import { OUTCOMES, TASK_TYPE_LABEL, useTaskMutations, type Task } from './tasks-api';
 
 /** Open a task: complete it (calls ask for the outcome and next action), edit, or cancel. */
 export function TaskDetailDialog({ task, onClose, timeZone }: { task: Task | null; onClose: () => void; timeZone?: string }) {
-  const users = byId(useUsers().data);
+  const users = byId(useColleagues().data);
   const { complete, cancel } = useTaskMutations();
   const [editing, setEditing] = useState(false);
   const [completing, setCompleting] = useState(false);

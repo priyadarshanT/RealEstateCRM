@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { presetRange } from '@/core/date-range';
 import { formatDate, formatRelativeDay, initials } from '@/core/format';
-import { byId, useCampaigns, useSources, useStages, useUsers } from '@/core/lookups';
+import { byId, useCampaigns, useColleagues, useSources, useStages } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from '@/features/reports/export-button';
 import { BulkBar } from './bulk-bar';
@@ -108,7 +108,7 @@ export function LeadsListScreen() {
   const stages = byId(useStages().data);
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
-  const users = byId(useUsers().data);
+  const users = byId(useColleagues().data);
 
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const someChecked = rows.some((r) => selected.has(r.id));

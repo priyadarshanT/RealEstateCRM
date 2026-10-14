@@ -1,7 +1,7 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
@@ -232,6 +232,40 @@ export class CampaignsService implements OnModuleInit {
       replied: n('replied'),
       optedOut: n('opted_out'),
     };
+  }
+
+  /**
+   * Campaign report (SRS §5.5, §8.6): every campaign that started sending in the period, with its results.
+   * Delivered includes replied and opted out (they were delivered first).
+   */
+  async summary(from?: Date, to?: Date) {
+    const campaigns = await this.db.current
+      .select()
+      .from(messageCampaigns)
+      .where(and(isNotNull(messageCampaigns.startedAt), from ? gte(messageCampaigns.startedAt, from) : undefined, to ? lt(messageCampaigns.startedAt, to) : undefined))
+      .orderBy(desc(messageCampaigns.startedAt));
+    if (!campaigns.length) return [];
+    const counts = await this.db.current
+      .select({ campaignId: messageCampaignRecipients.campaignId, status: messageCampaignRecipients.status, n: sql<number>`count(*)::int` })
+      .from(messageCampaignRecipients)
+      .where(inArray(messageCampaignRecipients.campaignId, campaigns.map((c) => c.id)))
+      .groupBy(messageCampaignRecipients.campaignId, messageCampaignRecipients.status);
+    return campaigns.map((c) => {
+      const n = (...s: string[]) => counts.filter((r) => r.campaignId === c.id && s.includes(r.status)).reduce((t, r) => t + r.n, 0);
+      return {
+        campaignId: c.id,
+        name: c.name,
+        channel: c.channel,
+        status: c.status,
+        startedAt: c.startedAt!,
+        audience: n('pending', 'sent', 'delivered', 'failed', 'replied', 'opted_out', 'skipped_opted_out'),
+        sent: n('sent', 'delivered', 'replied', 'opted_out'),
+        delivered: n('delivered', 'replied', 'opted_out'),
+        failed: n('failed'),
+        replied: n('replied'),
+        optedOut: n('opted_out', 'skipped_opted_out'),
+      };
+    });
   }
 
   // ---------------------------------------------------------------- sending (worker)

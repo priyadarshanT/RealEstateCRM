@@ -13,7 +13,7 @@ import { ExportButton } from './export-button';
 
 type Definition = Schemas['ReportDefinition'];
 
-const MODULE_LABEL: Record<string, string> = { leads: 'Leads', marketing: 'Marketing', performance: 'Performance', events: 'Events' };
+const MODULE_LABEL: Record<string, string> = { leads: 'Leads', marketing: 'Marketing', performance: 'Performance', events: 'Events', messaging: 'WhatsApp and email', integrations: 'Integrations' };
 
 /** Pick a report, filter by date, source, campaign, team and agent, and export (SRS §8). */
 export function ReportsScreen() {

@@ -8,6 +8,8 @@ import { PageQuery } from '../../core/http/pagination';
 import { IsDateOnly, IsUuid } from '../../core/http/validators';
 import { DashboardModule, FiltersQuery } from '../dashboard/dashboard.service';
 import { EventsModule } from '../events/events.service';
+import { IntegrationsModule } from '../integrations/integrations.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { LeadsModule } from '../leads/leads.module';
 import { MarketingModule } from '../marketing/marketing.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -36,8 +38,8 @@ export class ReportsController {
   @RequirePermission('leads.view')
   @ApiOperation({ operationId: 'listReports', summary: 'Available reports' })
   @ApiOkResponse({ type: ReportList })
-  list(): ReportList {
-    return { data: this.reports.list() };
+  list(@CurrentPrincipal() p: Principal): ReportList {
+    return { data: this.reports.list(p) };
   }
 
   @Get('reports/:key')
@@ -76,7 +78,7 @@ export class ReportsController {
 
 /** Reports, exports and the export log (SRS §8). */
 @Module({
-  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule],
+  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

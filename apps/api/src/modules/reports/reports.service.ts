@@ -19,6 +19,8 @@ import { OrganizationDirectory } from '../organization/directory.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TasksService } from '../tasks/tasks.service';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { CampaignsService } from '../messaging/campaigns.service';
 import { ReportColumn, reportDefinitions, ReportDefinition } from './report-definitions';
 
 // export_logs (db/schema.sql, Reports): every export with user, report, filters, format, rows and time.
@@ -118,20 +120,24 @@ export class ReportsService implements OnModuleInit {
     private readonly events: EventsService,
     labels: LabelsService,
     private readonly directory: OrganizationDirectory,
+    campaigns: CampaignsService,
+    integrations: IntegrationsService,
   ) {
-    this.reports = new Map(reportDefinitions({ reporting, tasks, marketing, events, labels }).map((r) => [r.key, r]));
+    this.reports = new Map(reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations }).map((r) => [r.key, r]));
   }
 
   onModuleInit(): void {
     this.queue.register<ExportJob>('report-export', (job) => this.buildExport(job));
   }
 
-  list(): ReportDefinitionDto[] {
-    return [...this.reports.values()].map((r) => ({ key: r.key, name: r.name, module: r.module, filters: r.filters, columns: r.columns }));
+  /** The reports this user may run (some need a narrower permission, e.g. connection health for Admins). */
+  list(p: Principal): ReportDefinitionDto[] {
+    return [...this.reports.values()].filter((r) => allowed(p, r)).map((r) => ({ key: r.key, name: r.name, module: r.module, filters: r.filters, columns: r.columns }));
   }
 
   async run(p: Principal, key: string, f: ReportFilters, limit: number, cursor?: string): Promise<ReportResultDto> {
     const report = this.find(key);
+    if (!allowed(p, report)) throw Problems.forbidden();
     checkPeriod(f);
     const offset = report.paged && cursor ? Number(decodeCursor(cursor, 1)[0]) : 0;
     const out = await report.run(p, f, limit, offset);
@@ -147,7 +153,7 @@ export class ReportsService implements OnModuleInit {
   // ---------------------------------------------------------------- exports
   async requestExport(p: Principal, key: string, body: ExportRequestDto): Promise<ExportDto> {
     const report = this.find(key);
-    if (!p.permissions.has(report.exportPermission)) throw Problems.forbidden('Only users allowed to export (Admin by default) can export.');
+    if (!p.permissions.has(report.exportPermission) || !allowed(p, report)) throw Problems.forbidden('Only users allowed to export (Admin by default) can export.');
     const filters = cleanFilters(body.filters ?? {});
     checkPeriod(filters);
     const [row] = await this.db.current.insert(exportLogs).values({ tenantId: p.tenantId, userId: p.userId, reportKey: key, filters: { ...filters }, format: body.format }).returning();
@@ -311,4 +317,8 @@ async function toXlsx(name: string, columns: ReportColumn[], rows: Record<string
   const total = sheet.addRow(Object.fromEntries(columns.map((c, i) => [c.key, i === 0 ? 'Total' : value(c, totals[c.key])])));
   total.font = { bold: true };
   return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+function allowed(p: Principal, r: ReportDefinition): boolean {
+  return !r.permissions || r.permissions.some((k) => p.permissions.has(k));
 }

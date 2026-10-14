@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
-import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
@@ -413,6 +413,36 @@ export class IntegrationsService {
     if (!row.secretRef) return undefined;
     const raw = await this.secrets.get(row.secretRef);
     return raw ? (JSON.parse(raw) as { pageAccessToken?: string }).pageAccessToken : undefined;
+  }
+
+  /** Integration failures report (SRS §8.6, §11.3): per connection, incoming events in the period and the last error. */
+  async failureSummary(from?: Date, to?: Date) {
+    const rows = await this.db.current.select().from(integrations).where(eq(integrations.scope, 'tenant')).orderBy(integrations.provider, integrations.accountLabel);
+    if (!rows.length) return [];
+    const stats = await this.db.current
+      .select({
+        integrationId: webhookEvents.integrationId,
+        received: sql<number>`count(*)::int`,
+        processed: sql<number>`count(*) FILTER (WHERE ${webhookEvents.status} = 'processed')::int`,
+        failed: sql<number>`count(*) FILTER (WHERE ${webhookEvents.status} = 'failed')::int`,
+        waiting: sql<number>`count(*) FILTER (WHERE ${webhookEvents.status} = 'received' AND ${webhookEvents.attempts} > 0)::int`,
+      })
+      .from(webhookEvents)
+      .where(and(inArray(webhookEvents.integrationId, rows.map((r) => r.id)), from ? gte(webhookEvents.receivedAt, from) : undefined, to ? lt(webhookEvents.receivedAt, to) : undefined))
+      .groupBy(webhookEvents.integrationId);
+    const statOf = new Map(stats.map((s) => [s.integrationId, s]));
+    return rows.map((r) => ({
+      integrationId: r.id,
+      provider: r.provider,
+      accountLabel: r.accountLabel,
+      status: r.status,
+      received: statOf.get(r.id)?.received ?? 0,
+      processed: statOf.get(r.id)?.processed ?? 0,
+      failed: statOf.get(r.id)?.failed ?? 0,
+      retrying: statOf.get(r.id)?.waiting ?? 0,
+      lastError: r.lastError,
+      lastErrorAt: r.lastErrorAt,
+    }));
   }
 
   // ---------------------------------------------------------------- incoming events and runs

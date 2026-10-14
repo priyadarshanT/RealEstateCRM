@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { QueueService } from '../src/core/queue/queue.service';
-import { createTestApp, signIn, testStorage, USERS } from './helpers';
+import { createTestApp, ownerQuery, signIn, testStorage, TENANT_B, USERS } from './helpers';
 
 type Client = Awaited<ReturnType<typeof signIn>>;
 
@@ -122,5 +122,69 @@ describe('dashboard, reports, exports', () => {
     const notes = await admin.get('/api/v1/notifications?limit=5').expect(200);
     expect(notes.body.data.map((n: { type: string }) => n.type)).toContain('export_ready');
     await agentA.get(`/api/v1/exports/${csv.body.id}`).expect(404);
+  });
+
+  it('Phase 2 reports: WhatsApp / email campaign results and integration failures (SRS §8.6)', async () => {
+    // A connection with 2 imported, 1 retrying and 1 failed event, and a sent campaign with mixed results.
+    const APPROVER = { id: 'b0000000-0000-0000-0000-0000000000f1', email: 'report.approver@b.ae' };
+    await ownerQuery(
+      `INSERT INTO users (id, tenant_id, email, full_name, role_id, status)
+       SELECT $1, $2, $3, 'Report Approver', id, 'active' FROM roles WHERE tenant_id = $2 AND key = 'sales_agent' ON CONFLICT (id) DO NOTHING`,
+      [APPROVER.id, TENANT_B, APPROVER.email],
+    );
+    const [integration] = await ownerQuery<{ id: string }>(
+      `INSERT INTO integrations (tenant_id, provider, account_label, external_account_id, status, settings, last_error, last_error_at)
+       VALUES ($1, 'webhook', 'Reports sheet', 'whk_reports_spec', 'connected', '{}', 'Not imported: a phone or an email is required', now()) RETURNING id`,
+      [TENANT_B],
+    );
+    for (const [n, status, attempts] of [[1, 'processed', 1], [2, 'processed', 1], [3, 'received', 2], [4, 'failed', 5]] as const) {
+      await ownerQuery(`INSERT INTO webhook_events (tenant_id, integration_id, provider, external_event_id, signature_valid, payload, status, attempts) VALUES ($1, $2, 'webhook', $3, true, '{}', $4, $5)`, [
+        TENANT_B,
+        integration!.id,
+        `reports-spec-${n}`,
+        status,
+        attempts,
+      ]);
+    }
+    const [template] = await ownerQuery<{ id: string }>(`INSERT INTO message_templates (tenant_id, channel, name, category, body, status) VALUES ($1, 'whatsapp', 'reports_spec_promo', 'marketing', 'Hi', 'approved') RETURNING id`, [TENANT_B]);
+    const [campaign] = await ownerQuery<{ id: string }>(
+      `INSERT INTO message_campaigns (tenant_id, name, channel, template_id, integration_id, audience_filter, status, created_by, approved_by, approved_at, started_at, completed_at)
+       VALUES ($1, 'Reports spec blast', 'whatsapp', $2, $3, '{}', 'completed', $4, $5, now(), now(), now()) RETURNING id`,
+      [TENANT_B, template!.id, integration!.id, USERS.adminB.id, APPROVER.id],
+    );
+    const leads = (await admin.get(`/api/v1/leads?sourceId=${sourceId}`).expect(200)).body.data as { id: string; phonePrimary: string }[];
+    for (const [i, status] of ['delivered', 'replied', 'failed'].entries()) {
+      await ownerQuery(`INSERT INTO message_campaign_recipients (tenant_id, campaign_id, lead_id, address, status) VALUES ($1, $2, $3, $4, $5)`, [TENANT_B, campaign!.id, leads[i]!.id, leads[i]!.phonePrimary, status]);
+    }
+
+    const list = (await admin.get('/api/v1/reports').expect(200)).body.data.map((r: { key: string }) => r.key);
+    expect(list).toEqual(expect.arrayContaining(['message_campaigns', 'integration_failures']));
+    const agentList = (await agentA.get('/api/v1/reports').expect(200)).body.data.map((r: { key: string }) => r.key);
+    expect(agentList).not.toContain('integration_failures');
+    await agentA.get('/api/v1/reports/integration_failures').expect(403);
+
+    const campaigns = (await admin.get(`/api/v1/reports/message_campaigns?from=${today}&to=${today}`).expect(200)).body;
+    expect(campaigns.rows.find((r: { campaign: string }) => r.campaign === 'Reports spec blast')).toMatchObject({
+      channel: 'WhatsApp',
+      audience: 3,
+      sent: 2,
+      delivered: 2,
+      failed: 1,
+      replied: 1,
+      optedOut: 0,
+      deliveryRate: 100,
+    });
+    expect((await admin.get('/api/v1/reports/message_campaigns?from=2020-01-01&to=2020-01-31').expect(200)).body.rows).toEqual([]);
+
+    const failures = (await admin.get(`/api/v1/reports/integration_failures?from=${today}&to=${today}`).expect(200)).body;
+    expect(failures.rows.find((r: { integrationId: string }) => r.integrationId === integration!.id)).toMatchObject({
+      connection: 'General webhook',
+      account: 'Reports sheet',
+      received: 4,
+      processed: 2,
+      retrying: 1,
+      failed: 1,
+      lastError: 'Not imported: a phone or an email is required',
+    });
   });
 });

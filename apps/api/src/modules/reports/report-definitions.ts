@@ -1,6 +1,8 @@
 import { Principal } from '../../core/auth/principal';
 import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { CampaignsService } from '../messaging/campaigns.service';
 import { dayAfter, dayStart } from '../../core/http/dates';
 import { LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
 import { MarketingService } from '../marketing/marketing.service';
@@ -22,7 +24,9 @@ export interface ReportOutput {
 export interface ReportDefinition {
   key: string;
   name: string;
-  module: 'leads' | 'marketing' | 'performance' | 'events';
+  module: 'leads' | 'marketing' | 'performance' | 'events' | 'messaging' | 'integrations';
+  /** Who may run it (any of these), when narrower than every report user (e.g. connection health for Admins). */
+  permissions?: string[];
   /** Who may export it (SRS §8.9: Admin only by default). */
   exportPermission: 'leads.export' | 'reports.export';
   filters: string[];
@@ -35,6 +39,20 @@ const FILTERS = ['from', 'to', 'projectId', 'sourceId', 'campaignId', 'teamId', 
 const money = (v: number) => v.toFixed(2);
 const ratio = (amount: number, count: number) => (count > 0 ? money(amount / count) : null);
 const iso = (d: Date | null) => d?.toISOString() ?? null;
+const PROVIDER_LABEL: Record<string, string> = {
+  meta: 'Meta lead ads',
+  webhook: 'General webhook',
+  website: 'Website',
+  property_finder: 'Property Finder',
+  bayut: 'Bayut',
+  dubizzle: 'Dubizzle',
+  whatsapp_cloud: 'WhatsApp',
+  email_ses: 'Email sender',
+  google_ads: 'Google Ads',
+  linkedin: 'LinkedIn',
+  snapchat: 'Snapchat',
+  tiktok: 'TikTok',
+};
 
 interface Deps {
   reporting: LeadReportingService;
@@ -42,9 +60,14 @@ interface Deps {
   marketing: MarketingService;
   events: EventsService;
   labels: LabelsService;
+  campaigns: CampaignsService;
+  integrations: IntegrationsService;
 }
 
-/** The Phase 1 reports (SRS §8.2–8.5). Phase 2 and 3 reports (messaging, sales, invoices, attendance) are added with their modules. */
+/**
+ * Reports (SRS §8.2–8.6): Phase 1 lead, marketing, performance and event reports; Phase 2 WhatsApp / email campaigns
+ * and integration failures. Phase 3 reports (sales, invoices, attendance) are added with their modules.
+ */
 export function reportDefinitions(d: Deps): ReportDefinition[] {
   const leadColumns: ReportColumn[] = [
     { key: 'name', label: 'Name', type: 'text' },
@@ -303,6 +326,86 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
         const leads = rows.reduce((n, r) => n + r.leads, 0);
         const cost = rows.reduce((n, r) => n + Number(r.cost ?? 0), 0);
         return { rows, totals: { leads, meetings: rows.reduce((n, r) => n + r.meetings, 0), bookings: rows.reduce((n, r) => n + r.bookings, 0), cost: money(cost), costPerLead: ratio(cost, leads) } };
+      },
+    },
+    {
+      key: 'message_campaigns',
+      name: 'WhatsApp and email campaigns',
+      module: 'messaging',
+      permissions: ['campaigns.create', 'campaigns.approve', 'settings.manage'],
+      exportPermission: 'reports.export',
+      filters: ['from', 'to'],
+      columns: [
+        { key: 'campaign', label: 'Campaign', type: 'text' },
+        { key: 'channel', label: 'Channel', type: 'text' },
+        { key: 'startedAt', label: 'Sent on', type: 'datetime' },
+        { key: 'audience', label: 'Audience', type: 'number' },
+        { key: 'sent', label: 'Sent', type: 'number' },
+        { key: 'delivered', label: 'Delivered', type: 'number' },
+        { key: 'failed', label: 'Failed', type: 'number' },
+        { key: 'replied', label: 'Replied', type: 'number' },
+        { key: 'optedOut', label: 'Opted out', type: 'number' },
+        { key: 'deliveryRate', label: 'Delivered of sent', type: 'percent' },
+      ],
+      paged: false,
+      async run(_p, f) {
+        const list = await d.campaigns.summary(f.from ? dayStart(f.from) : undefined, f.to ? dayAfter(f.to) : undefined);
+        const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 1000) / 10 : 0);
+        const rows = list.map((c) => ({
+          campaignId: c.campaignId,
+          campaign: c.name,
+          channel: c.channel === 'whatsapp' ? 'WhatsApp' : 'Email',
+          startedAt: iso(c.startedAt),
+          audience: c.audience,
+          sent: c.sent,
+          delivered: c.delivered,
+          failed: c.failed,
+          replied: c.replied,
+          optedOut: c.optedOut,
+          deliveryRate: pct(c.delivered, c.sent),
+        }));
+        const sum = (k: 'audience' | 'sent' | 'delivered' | 'failed' | 'replied' | 'optedOut') => rows.reduce((n, r) => n + r[k], 0);
+        return {
+          rows,
+          totals: { audience: sum('audience'), sent: sum('sent'), delivered: sum('delivered'), failed: sum('failed'), replied: sum('replied'), optedOut: sum('optedOut'), deliveryRate: pct(sum('delivered'), sum('sent')) },
+        };
+      },
+    },
+    {
+      key: 'integration_failures',
+      name: 'Integration failures',
+      module: 'integrations',
+      permissions: ['settings.manage'],
+      exportPermission: 'reports.export',
+      filters: ['from', 'to'],
+      columns: [
+        { key: 'connection', label: 'Connection', type: 'text' },
+        { key: 'account', label: 'Account', type: 'text' },
+        { key: 'status', label: 'Status', type: 'text' },
+        { key: 'received', label: 'Received', type: 'number' },
+        { key: 'processed', label: 'Imported', type: 'number' },
+        { key: 'retrying', label: 'Retrying', type: 'number' },
+        { key: 'failed', label: 'Failed', type: 'number' },
+        { key: 'lastError', label: 'Last error', type: 'text' },
+        { key: 'lastErrorAt', label: 'Last error at', type: 'datetime' },
+      ],
+      paged: false,
+      async run(_p, f) {
+        const list = await d.integrations.failureSummary(f.from ? dayStart(f.from) : undefined, f.to ? dayAfter(f.to) : undefined);
+        const rows = list.map((i) => ({
+          integrationId: i.integrationId,
+          connection: PROVIDER_LABEL[i.provider] ?? i.provider,
+          account: i.accountLabel,
+          status: i.status,
+          received: i.received,
+          processed: i.processed,
+          retrying: i.retrying,
+          failed: i.failed,
+          lastError: i.lastError,
+          lastErrorAt: iso(i.lastErrorAt),
+        }));
+        const sum = (k: 'received' | 'processed' | 'retrying' | 'failed') => rows.reduce((n, r) => n + r[k], 0);
+        return { rows, totals: { received: sum('received'), processed: sum('processed'), retrying: sum('retrying'), failed: sum('failed') } };
       },
     },
   ];

@@ -139,6 +139,16 @@ export class LeadsRepository {
     return rows.length > 0;
   }
 
+  /** External submission IDs (e.g. Meta lead IDs) already imported through one integration. */
+  async knownSubmissions(integrationId: string, externalSubmissionIds: string[]): Promise<string[]> {
+    if (!externalSubmissionIds.length) return [];
+    const rows = await this.db.current
+      .selectDistinct({ id: leadInquiries.externalSubmissionId })
+      .from(leadInquiries)
+      .where(and(eq(leadInquiries.integrationId, integrationId), inArray(leadInquiries.externalSubmissionId, externalSubmissionIds)));
+    return rows.map((r) => r.id!);
+  }
+
   async insertStageHistory(values: { leadId: string; fromStageId: string | null; toStageId: string; reasonId?: string | null; note?: string | null; isAutomatic?: boolean; changedBy?: string | null }): Promise<void> {
     await this.db.current.insert(leadStageHistory).values({ ...values, tenantId: this.tenantId });
   }

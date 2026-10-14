@@ -307,6 +307,21 @@ export class LeadsService {
     return this.repo.addActivity(leadId, input);
   }
 
+  /** The lead wrote to us (WhatsApp reply, email): keeps the last inbound time used by lists and reports. */
+  async recordInbound(leadId: string, at: Date = new Date()): Promise<void> {
+    await this.repo.touch(leadId, { lastInboundAt: at, lastActivityAt: at });
+  }
+
+  /** Which of these source submission IDs were already imported through the integration (Meta check, SRS §8.7). */
+  async knownSubmissions(integrationId: string, externalSubmissionIds: string[]): Promise<string[]> {
+    return this.repo.knownSubmissions(integrationId, externalSubmissionIds);
+  }
+
+  /** The lead with this phone or email in the tenant (not limited to a user's scope), if any. */
+  async findByContact(phone: string | null, email: string | null): Promise<LeadRow | undefined> {
+    return this.repo.findExisting(phone ? [phone] : [], email);
+  }
+
   async findRow(leadId: string): Promise<LeadRow | undefined> {
     return this.repo.find(leadId);
   }

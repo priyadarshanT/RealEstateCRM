@@ -7,17 +7,30 @@ import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
 import { formatDateTime } from '@/core/format';
+import { ConnectPortalDialog, PORTALS } from './connect-portal-dialog';
 import { ConnectSenderDialog } from './connect-sender-dialog';
+import { GeneralWebhookDialog } from './general-webhook-dialog';
+import { MetaCheckDialog } from './meta-check-dialog';
 
 type Integration = Schemas['Integration'];
 
-const LABEL: Partial<Record<Integration['provider'], string>> = { meta: 'Meta lead ads', whatsapp_cloud: 'WhatsApp (Meta, direct)', email_ses: 'Email sender' };
+const LABEL: Partial<Record<Integration['provider'], string>> = {
+  meta: 'Meta lead ads',
+  whatsapp_cloud: 'WhatsApp (Meta, direct)',
+  email_ses: 'Email sender',
+  webhook: 'General webhook',
+  website: 'Website',
+  google_workspace: 'Google (Calendar and Meet)',
+  microsoft_365: 'Microsoft 365 (Calendar and Teams)',
+  ...PORTALS,
+};
 
 const STATUS_TONE = { connected: 'success', pending: 'warning', error: 'danger', disconnected: 'neutral' } as const;
 
 /**
- * Connections (SRS §11.3, wireframe "Settings and integrations"): Meta lead ads, the WhatsApp Business number
- * and the email sender. Each row: status, last sync, records, failures, Test / Retry / Disconnect.
+ * Connections (SRS §11.1–11.4, wireframe "Settings and integrations"): Meta lead ads, property portals, the general
+ * webhook, the WhatsApp Business number and the email sender. Each row: status, last sync, records, failures,
+ * Test / Retry / Disconnect; the general webhook also edits its mapping, Meta runs the Meta check.
  */
 export function ConnectionsTab() {
   const qc = useQueryClient();
@@ -27,6 +40,9 @@ export function ConnectionsTab() {
   const [testResult, setTestResult] = useState<{ ok: boolean; detail?: string } | null>(null);
   const [eventsFor, setEventsFor] = useState<Integration | null>(null);
   const [sender, setSender] = useState<'whatsapp_cloud' | 'email_ses' | null>(null);
+  const [portal, setPortal] = useState(false);
+  const [webhook, setWebhook] = useState<{ open: boolean; existing: { integrationId: string; name: string; settings: Record<string, unknown> } | null }>({ open: false, existing: null });
+  const [metaCheck, setMetaCheck] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['integrations'] });
 
   const connect = useMutation({
@@ -48,6 +64,12 @@ export function ConnectionsTab() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setWebhook({ open: true, existing: null })}>
+          New general webhook
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setPortal(true)}>
+          Connect portal
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setSender('whatsapp_cloud')}>
           Connect WhatsApp
         </Button>
@@ -79,6 +101,17 @@ export function ConnectionsTab() {
               <Td>
                 <p className="font-medium">{LABEL[i.provider] ?? i.provider}</p>
                 <p className="text-xs text-muted-foreground">{i.accountLabel}</p>
+                {i.provider === 'webhook' || i.provider === 'website' ? (
+                  <p className="max-w-72 truncate font-mono text-[11px] text-muted-foreground" title={String(i.settings?.inboundUrl ?? '')}>
+                    {String(i.settings?.inboundUrl ?? '')}
+                  </p>
+                ) : null}
+                {i.provider in PORTALS ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {[i.settings?.accountId ? `Account ${String(i.settings.accountId)}` : null, i.settings?.inboundEmail ? `Lead emails to ${String(i.settings.inboundEmail)}` : null].filter(Boolean).join(' · ') ||
+                      'Webhook with the shared secret'}
+                  </p>
+                ) : null}
               </Td>
               <Td>
                 <Badge tone={STATUS_TONE[i.status]}>{i.status === 'connected' ? 'Connected' : i.status[0]!.toUpperCase() + i.status.slice(1)}</Badge>
@@ -98,6 +131,22 @@ export function ConnectionsTab() {
                 <Button variant="link" size="sm" onClick={() => setEventsFor(i)}>
                   Events
                 </Button>
+                {(i.provider === 'webhook' || i.provider === 'website') && i.status === 'connected' ? (
+                  <>
+                    <span className="px-1 text-muted-foreground">·</span>
+                    <Button variant="link" size="sm" onClick={() => setWebhook({ open: true, existing: { integrationId: i.id, name: i.accountLabel, settings: i.settings ?? {} } })}>
+                      Mapping
+                    </Button>
+                  </>
+                ) : null}
+                {i.provider === 'meta' && i.status === 'connected' ? (
+                  <>
+                    <span className="px-1 text-muted-foreground">·</span>
+                    <Button variant="link" size="sm" onClick={() => setMetaCheck(i.id)}>
+                      Meta check
+                    </Button>
+                  </>
+                ) : null}
                 <span className="px-1 text-muted-foreground">·</span>
                 <Button variant="link" size="sm" className="text-danger" onClick={() => window.confirm('Disconnect this account?') && disconnect.mutate(i.id)}>
                   Disconnect
@@ -108,7 +157,7 @@ export function ConnectionsTab() {
           {list.data?.length === 0 ? (
             <tr>
               <Td colSpan={6} className="text-center text-muted-foreground">
-                No connections yet. Connect Meta to receive lead-ad leads automatically.
+                No connections yet. Connect Meta, a portal or a general webhook to receive leads automatically.
               </Td>
             </tr>
           ) : null}
@@ -121,6 +170,9 @@ export function ConnectionsTab() {
       ))}
       <EventsDialog integration={eventsFor} onClose={() => setEventsFor(null)} />
       <ConnectSenderDialog provider={sender} onClose={() => setSender(null)} />
+      <ConnectPortalDialog open={portal} onClose={() => setPortal(false)} />
+      <GeneralWebhookDialog open={webhook.open} existing={webhook.existing} onClose={() => setWebhook({ open: false, existing: null })} />
+      <MetaCheckDialog integrationId={metaCheck} onClose={() => setMetaCheck(null)} />
     </div>
   );
 }

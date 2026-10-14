@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { QueueService } from '../src/core/queue/queue.service';
 import { META_API, MetaApi, MetaLead } from '../src/modules/integrations/meta/meta-api';
-import { MetaLeadIntake } from '../src/modules/integrations/meta/meta-webhook';
+import { IncomingLeadIntake } from '../src/modules/integrations/inbox/incoming-lead-intake';
 import { createTestApp, ownerQuery, signIn, TENANT_B, USERS } from './helpers';
 
 type Client = Awaited<ReturnType<typeof signIn>>;
@@ -18,6 +18,8 @@ class FakeMeta implements MetaApi {
   leads = new Map<string, MetaLead>();
   failNext = 0;
   subscribed: string[] = [];
+  /** Lead IDs Meta reports for the Meta check. */
+  sourceIds: string[] = [];
   authorizeUrl(state: string, redirectUri: string) {
     return `https://facebook.test/dialog?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
   }
@@ -43,6 +45,10 @@ class FakeMeta implements MetaApi {
   }
   async check() {
     return { ok: true, detail: 'Connected to page Al Noor B Page' };
+  }
+  async listLeadIds(pageId: string, token: string) {
+    if (pageId !== 'PAGE-1' || token !== 'page-token') throw new Error('wrong page');
+    return this.sourceIds;
   }
 }
 
@@ -75,7 +81,7 @@ describe('Meta lead ads', () => {
   });
 
   it('connects a page through OAuth; the state is signed and single-use', async () => {
-    const phase2 = await admin.post('/api/v1/integrations').send({ provider: 'bayut' }).expect(400);
+    const phase2 = await admin.post('/api/v1/integrations').send({ provider: 'tiktok' }).expect(400);
     expect(phase2.body.errors[0].message).toMatch(/cannot be connected yet/);
 
     const start = await admin.post('/api/v1/integrations').send({ provider: 'meta' }).expect(201);
@@ -86,7 +92,7 @@ describe('Meta lead ads', () => {
     const tampered = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${state}x`).expect(302);
     expect(tampered.headers.location).toContain('error=invalid_state');
     const ok = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${encodeURIComponent(state)}`).expect(302);
-    expect(ok.headers.location).toBe(`http://localhost:3000/settings/integrations?connected=${integrationId}`);
+    expect(ok.headers.location).toBe(`http://localhost:3000/settings?tab=connections&connected=${integrationId}`);
     const again = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${encodeURIComponent(state)}`).expect(302);
     expect(again.headers.location).toContain('error=invalid_state');
 
@@ -166,7 +172,7 @@ describe('Meta lead ads', () => {
     fake.failNext = 5;
     await webhook(leadgen('LG-300')).expect(200);
     const [event] = await ownerQuery<{ id: string }>(`SELECT id FROM webhook_events WHERE external_event_id = 'LG-300'`);
-    const intake = app.get(MetaLeadIntake);
+    const intake = app.get(IncomingLeadIntake);
     const { DbService } = await import('../src/core/database/db.service');
     const db = app.get(DbService);
     for (let i = 0; i < 5; i++) await db.withTenant(TENANT_B, () => intake.process(event!.id));
@@ -181,6 +187,29 @@ describe('Meta lead ads', () => {
     const after = await admin.get(`/api/v1/integrations/${integrationId}/events?status=processed`).expect(200);
     expect(after.body.data.map((e: { externalEventId: string }) => e.externalEventId)).toContain('LG-300');
     await admin.post(`/api/v1/webhook-events/${event!.id}/retry`).expect(409);
+  });
+
+  it('the Meta check compares Meta with the CRM and recovers missing leads (SRS §8.7)', async () => {
+    fake.leads.set('LG-500', { id: 'LG-500', createdTime: new Date(), fieldData: [{ name: 'full_name', values: ['Omar Recovered'] }, { name: 'phone_number', values: ['+971559870500'] }] });
+    fake.sourceIds = ['LG-100', 'LG-300', 'LG-500', 'LG-500'];
+    const period = { periodStart: '2026-10-01T00:00:00Z', periodEnd: '2026-10-15T00:00:00Z' };
+    await agent.post(`/api/v1/integrations/${integrationId}/reconciliations`).send(period).expect(403);
+    const bad = await admin.post(`/api/v1/integrations/${integrationId}/reconciliations`).send({ periodStart: period.periodEnd, periodEnd: period.periodStart }).expect(400);
+    expect(bad.body.errors[0].field).toBe('periodEnd');
+
+    const started = await admin.post(`/api/v1/integrations/${integrationId}/reconciliations`).send(period).expect(202);
+    expect(started.body).toMatchObject({ integrationId, status: 'running', periodStart: '2026-10-01T00:00:00.000Z' });
+    const queue = app.get(QueueService);
+    expect(await queue.drain('meta-reconciliation')).toBe(1);
+    const runs = await admin.get(`/api/v1/reconciliations?integrationId=${integrationId}`).expect(200);
+    expect(runs.body.data[0]).toMatchObject({ id: started.body.id, status: 'completed', sourceCount: 3, crmCount: 2, missingExternalIds: ['LG-500'], recoveredCount: 1 });
+
+    await queue.drain('lead-intake');
+    expect((await admin.get('/api/v1/leads?q=Omar%20Recovered').expect(200)).body.data).toHaveLength(1);
+    // Nothing missing any more on the next check.
+    await admin.post(`/api/v1/integrations/${integrationId}/reconciliations`).send({ ...period, recoverMissing: false }).expect(202);
+    await queue.drain('meta-reconciliation');
+    expect((await admin.get('/api/v1/reconciliations').expect(200)).body.data[0]).toMatchObject({ sourceCount: 3, crmCount: 3, missingExternalIds: [], recoveredCount: 0 });
   });
 
   it('disconnect removes the token; new leads for the page are ignored', async () => {

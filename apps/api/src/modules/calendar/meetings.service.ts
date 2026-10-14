@@ -14,6 +14,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { OrganizationService } from '../organization/organization.service';
 import { TasksService } from '../tasks/tasks.service';
+import { CalendarChange } from './adapters/calendar-sync';
 import { MEETING_LINKS, MeetingLinkProvider } from './adapters/meeting-links';
 import { MeetingChannel, MeetingRow, meetings } from './calendar.schema';
 import { isTimeZone, MeetingCompleteDto, MeetingCreateDto, MeetingDto, MeetingListQuery, MeetingRescheduleDto } from './dto/calendar.dto';
@@ -248,6 +249,51 @@ export class MeetingsService {
     await this.audit.record('update', 'meetings', id, { status: ['scheduled', body.status] });
     await this.leads.recordAction(before.leadId, p.userId);
     return MeetingDto.from(row!);
+  }
+
+  /**
+   * A change made in the agent's Google or Microsoft calendar (SRS §3.13): a moved event moves the meeting, a
+   * deleted one cancels it, and the client is told. A move onto another meeting is not applied (no double booking).
+   */
+  async applyExternalChange(change: CalendarChange, calendarName: string): Promise<void> {
+    const [m] = await this.db.current
+      .select()
+      .from(meetings)
+      .where(
+        and(
+          eq(meetings.status, 'scheduled'),
+          change.joinUrl ? sql`(${meetings.externalMeetingId} = ${change.externalMeetingId} OR ${meetings.joinUrl} = ${change.joinUrl})` : eq(meetings.externalMeetingId, change.externalMeetingId),
+        ),
+      )
+      .limit(1);
+    if (!m) return;
+    const label = m.type === 'viewing' ? 'Viewing' : 'Meeting';
+    if (change.status === 'cancelled') {
+      const [row] = await this.db.current
+        .update(meetings)
+        .set({ status: 'cancelled', cancelReason: `Cancelled in ${calendarName}`, updatedAt: new Date() })
+        .where(eq(meetings.id, m.id))
+        .returning();
+      await this.tasks.syncMeetingTask(m.id, { status: 'cancelled' });
+      await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} cancelled in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+      await this.audit.record('update', 'meetings', m.id, { status: ['scheduled', 'cancelled'] });
+      await this.confirm(row!, 'cancelled');
+      return;
+    }
+    if (!change.startsAt || !change.endsAt || change.endsAt <= change.startsAt) return;
+    if (change.startsAt.getTime() === m.startsAt.getTime() && change.endsAt.getTime() === m.endsAt.getTime()) return;
+    // In a savepoint: a clash (exclusion constraint) must not abort the rest of the sync.
+    const attempt = await this.db.savepoint(() => this.updateOrBusy(m.id, { startsAt: change.startsAt, endsAt: change.endsAt, rescheduleCount: m.rescheduleCount + 1, updatedAt: new Date() }));
+    if (!attempt.ok && !(attempt.error instanceof ProblemException && attempt.error.code === 'AGENT_BUSY')) throw attempt.error;
+    const moved = attempt.ok ? attempt.value : undefined;
+    if (!moved) {
+      await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} not moved: ${calendarName} change clashes with another meeting`, actorUserId: null, links: { meetingId: m.id } });
+      return;
+    }
+    await this.tasks.syncMeetingTask(m.id, { dueAt: change.startsAt, durationMinutes: minutes(change.startsAt, change.endsAt) });
+    await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} moved to ${await this.when(change.startsAt)} in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+    await this.audit.record('update', 'meetings', m.id, { startsAt: [m.startsAt.toISOString(), change.startsAt.toISOString()] });
+    await this.confirm(moved[0]!, 'moved');
   }
 
   /** Scheduled meetings of an agent in a period (busy times for free slots). */

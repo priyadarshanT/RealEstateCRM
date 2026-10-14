@@ -72,3 +72,23 @@ export const syncRuns = pgTable('integration_sync_runs', {
 
 export type IntegrationRow = typeof integrations.$inferSelect;
 export type WebhookEventRow = typeof webhookEvents.$inferSelect;
+
+/** Meta check runs (SRS §8.7): leads at the source vs leads in the CRM, missing IDs and how many were recovered. */
+export const reconciliationRuns = pgTable('reconciliation_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  integrationId: uuid('integration_id').notNull(),
+  periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+  periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+  sourceCount: integer('source_count').notNull(),
+  crmCount: integer('crm_count').notNull(),
+  missingExternalIds: text('missing_external_ids').array().notNull().default([]),
+  recoveredCount: integer('recovered_count').notNull().default(0),
+  status: text('status').$type<'running' | 'completed' | 'failed'>().notNull(),
+  errorDetail: text('error_detail'),
+  runBy: uuid('run_by'),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+});
+
+export type ReconciliationRow = typeof reconciliationRuns.$inferSelect;

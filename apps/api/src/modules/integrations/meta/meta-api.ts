@@ -27,6 +27,8 @@ export interface MetaApi {
   subscribePage(pageId: string, pageToken: string): Promise<void>;
   fetchLead(leadgenId: string, pageToken: string): Promise<MetaLead>;
   check(pageId: string, pageToken: string): Promise<{ ok: boolean; detail: string }>;
+  /** IDs of every lead submitted on the page's forms in the period (Meta check, SRS §8.7). */
+  listLeadIds(pageId: string, pageToken: string, from: Date, to: Date): Promise<string[]>;
 }
 export const META_API = Symbol('META_API');
 
@@ -104,6 +106,32 @@ export class GraphMetaApi implements MetaApi {
     } catch (err) {
       return { ok: false, detail: (err as Error).message };
     }
+  }
+
+  async listLeadIds(pageId: string, pageToken: string, from: Date, to: Date): Promise<string[]> {
+    const forms = await this.all<{ id: string }>(`/${pageId}/leadgen_forms`, { access_token: pageToken, fields: 'id', limit: '100' });
+    const filtering = JSON.stringify([
+      { field: 'time_created', operator: 'GREATER_THAN_OR_EQUAL', value: Math.floor(from.getTime() / 1000) },
+      { field: 'time_created', operator: 'LESS_THAN', value: Math.floor(to.getTime() / 1000) },
+    ]);
+    const ids: string[] = [];
+    for (const form of forms) {
+      const leads = await this.all<{ id: string }>(`/${form.id}/leads`, { access_token: pageToken, fields: 'id', filtering, limit: '500' });
+      ids.push(...leads.map((l) => l.id));
+    }
+    return ids;
+  }
+
+  /** Follows Graph API paging (paging.cursors.after) to the end. */
+  private async all<T>(path: string, query: Record<string, string>): Promise<T[]> {
+    const out: T[] = [];
+    let after: string | undefined;
+    do {
+      const page = await this.get<{ data: T[]; paging?: { cursors?: { after?: string }; next?: string } }>(path, { ...query, ...(after ? { after } : {}) });
+      out.push(...page.data);
+      after = page.paging?.next ? page.paging.cursors?.after : undefined;
+    } while (after);
+    return out;
   }
 
   private async get<T>(path: string, query: Record<string, string>): Promise<T> {

@@ -10,6 +10,7 @@ import { LeadActions } from './lead-actions';
 import { ConsentCard } from '@/features/messaging/consent-card';
 import { EnquiriesCard, LeadDetailsCard, ScoreCard } from './lead-details-card';
 import { LeadProjectsCard } from './lead-projects-card';
+import { DealsCard } from '@/features/deals/deals-card';
 import { LeadTimeline } from './lead-timeline';
 import { useLead, useLeadMutations } from './leads-api';
 import { StageBar } from './stage-bar';
@@ -62,6 +63,7 @@ export function LeadPageScreen({ id }: { id: string }) {
         <div className="space-y-3">
           <LeadDetailsCard lead={l} canEdit={canEdit} />
           <LeadProjectsCard lead={l} canEdit={canEdit} />
+          <DealsCard leadId={l.id} canEdit={canEdit} />
           <ScoreCard score={l.score} />
           <ConsentCard leadId={l.id} canEdit={canEdit} timeZone={tz} />
           <EnquiriesCard leadId={l.id} />

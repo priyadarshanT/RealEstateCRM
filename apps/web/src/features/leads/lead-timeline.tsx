@@ -2,7 +2,7 @@
 
 import { Card, CardBody, CardHeader, Loading } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
-import { ArrowRightLeft, CalendarCheck, Download, FileText, Mail, MessageCircle, NotebookPen, Phone, RotateCw, Share2, Sparkles, UserCog, type LucideIcon } from 'lucide-react';
+import { ArrowRightLeft, BadgeCheck, CalendarCheck, Download, FileText, Handshake, Mail, Receipt, Wallet, MessageCircle, NotebookPen, Phone, RotateCw, Share2, Sparkles, UserCog, type LucideIcon } from 'lucide-react';
 import { formatDateTime } from '@/core/format';
 import { byId, useColleagues } from '@/core/lookups';
 import { useTimeline } from './leads-api';
@@ -20,6 +20,12 @@ const ICONS: Partial<Record<Schemas['Activity']['type'], LucideIcon>> = {
   meeting: CalendarCheck,
   viewing: CalendarCheck,
   attachment: FileText,
+  deal: Handshake,
+  eoi: BadgeCheck,
+  booking: BadgeCheck,
+  invoice: Receipt,
+  purchase_order: Receipt,
+  payment: Wallet,
 };
 
 /** One timeline of everything that happened to the lead (SRS §2.13). History cannot be edited. */

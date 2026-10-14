@@ -3,13 +3,14 @@
 import { Button, Input, Select } from '@crm/ui';
 import { X } from 'lucide-react';
 import { DATE_PRESETS, type DatePreset } from '@/core/date-range';
-import { useCampaigns, useSources, useStages, useTeams, useUsers } from '@/core/lookups';
+import { useCampaigns, useProjectList, useSources, useStages, useTeams, useUsers } from '@/core/lookups';
 import { useCan } from '@/core/session';
 
 /** Filter values held by the lead list. Turned into GET /leads query parameters by the screen. */
 export interface LeadFilterState {
   datePreset: DatePreset;
   sourceId?: string;
+  projectId?: string;
   campaignId?: string;
   ownerUserId?: string;
   teamId?: string;
@@ -25,6 +26,7 @@ export function LeadFilters({ value, onChange }: { value: LeadFilterState; onCha
   const stages = useStages();
   const sources = useSources();
   const campaigns = useCampaigns();
+  const projects = useProjectList();
   const users = useUsers();
   const teams = useTeams();
   const set = (patch: Partial<LeadFilterState>) => onChange({ ...value, ...patch });
@@ -45,6 +47,14 @@ export function LeadFilters({ value, onChange }: { value: LeadFilterState; onCha
         {sources.data?.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}
+          </option>
+        ))}
+      </Select>
+      <Select className="h-8 w-auto text-xs" value={value.projectId ?? ''} onChange={(e) => set({ projectId: opt(e.target.value) })} aria-label="Project">
+        <option value="">Project</option>
+        {projects.data?.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
           </option>
         ))}
       </Select>

@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { presetRange } from '@/core/date-range';
 import { formatDate, formatRelativeDay, initials } from '@/core/format';
-import { byId, useCampaigns, useColleagues, useSources, useStages } from '@/core/lookups';
+import { byId, useCampaigns, useColleagues, useProjectList, useSources, useStages } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from '@/features/reports/export-button';
 import { BulkBar } from './bulk-bar';
@@ -54,7 +54,7 @@ function toQuery(tab: LeadTab, f: LeadFilterState, q: string): LeadQuery {
   if (q) query.q = q;
   if (from) query.createdFrom = from;
   if (to) query.createdTo = to;
-  for (const k of ['sourceId', 'campaignId', 'ownerUserId', 'teamId', 'stageId', 'budgetMin', 'budgetMax'] as const) {
+  for (const k of ['sourceId', 'projectId', 'campaignId', 'ownerUserId', 'teamId', 'stageId', 'budgetMin', 'budgetMax'] as const) {
     if (f[k]) (query as Record<string, unknown>)[k] = f[k];
   }
   return query;
@@ -71,7 +71,7 @@ export function LeadsListScreen() {
   const [tab, setTab] = useState<LeadTab>((params.get('tab') as LeadTab) ?? 'all');
   const [filters, setFilters] = useState<LeadFilterState>(() => ({
     ...EMPTY_FILTERS,
-    ...Object.fromEntries(['sourceId', 'campaignId', 'ownerUserId', 'teamId', 'stageId'].flatMap((k) => (params.get(k) ? [[k, params.get(k)]] : []))),
+    ...Object.fromEntries(['sourceId', 'projectId', 'campaignId', 'ownerUserId', 'teamId', 'stageId'].flatMap((k) => (params.get(k) ? [[k, params.get(k)]] : []))),
   }));
   const [search, setSearch] = useState('');
   const [savedName, setSavedName] = useState<string | null>(null);
@@ -108,6 +108,7 @@ export function LeadsListScreen() {
   const stages = byId(useStages().data);
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
+  const projects = byId(useProjectList().data);
   const users = byId(useColleagues().data);
 
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -132,6 +133,10 @@ export function LeadsListScreen() {
         );
       case 'email':
         return lead.email ?? '—';
+      case 'project': {
+        const id = lead.primaryProjectId ?? lead.projectIds?.[0];
+        return id ? <span className="text-xs">{projects.get(id)?.name ?? '—'}</span> : '—';
+      }
       case 'country':
         return lead.countryCode ?? '—';
       case 'source':

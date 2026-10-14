@@ -33,6 +33,15 @@ export function useReasons(type?: Schemas['Reason']['type']) {
   });
 }
 
+/** Projects (name, developer, active) for project pickers, filters and names on leads and reports. */
+export function useProjectList() {
+  return useQuery({
+    queryKey: ['projects', 'lookup'],
+    staleTime: LONG,
+    queryFn: async () => unwrap(await api.GET('/projects', { params: { query: { limit: 200 } } })).data,
+  });
+}
+
 export function useCampaigns() {
   return useQuery({
     queryKey: ['campaigns'],

@@ -1,9 +1,10 @@
-// Lead list columns (SRS §2.10). Project and unit names arrive with the Projects module (Phase 3).
+// Lead list columns (SRS §2.10).
 
 export const LEAD_COLUMNS = [
   { key: 'name', label: 'Name / Phone' },
   { key: 'email', label: 'Email' },
   { key: 'country', label: 'Country' },
+  { key: 'project', label: 'Project' },
   { key: 'source', label: 'Source · Campaign' },
   { key: 'agent', label: 'Agent' },
   { key: 'priority', label: 'Priority' },

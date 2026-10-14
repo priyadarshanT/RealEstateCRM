@@ -140,7 +140,7 @@ export class FilesService {
   }
 
   /** Links an uploaded file to a record. The caller (the owning module) has already checked edit access. */
-  async attach(target: AttachmentTarget, fileId: string, category: AttachmentCategory): Promise<AttachmentRow & { fileName: string }> {
+  async attach(target: AttachmentTarget, fileId: string, category: AttachmentCategory, sortOrder = 0): Promise<AttachmentRow & { fileName: string }> {
     const file = await this.find(fileId);
     if (!file) throw Problems.validation([{ field: 'fileId', message: 'file not found' }]);
     if ((await this.storage.size(file.storageKey)) === null) {
@@ -148,7 +148,7 @@ export class FilesService {
     }
     const [row] = await this.db.current
       .insert(attachments)
-      .values({ tenantId: this.db.currentTenantId!, fileId, category, [TARGET_FIELD[target.type]]: target.id, createdBy: RequestContext.get().userId ?? null })
+      .values({ tenantId: this.db.currentTenantId!, fileId, category, sortOrder, [TARGET_FIELD[target.type]]: target.id, createdBy: RequestContext.get().userId ?? null })
       .returning();
     await this.audit.record('create', 'attachments', row!.id, { fileId: [null, fileId], [TARGET_FIELD[target.type]]: [null, target.id] });
     return { ...row!, fileName: file.fileName };

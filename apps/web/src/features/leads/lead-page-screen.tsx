@@ -9,6 +9,7 @@ import { useCan, useMe } from '@/core/session';
 import { LeadActions } from './lead-actions';
 import { ConsentCard } from '@/features/messaging/consent-card';
 import { EnquiriesCard, LeadDetailsCard, ScoreCard } from './lead-details-card';
+import { LeadProjectsCard } from './lead-projects-card';
 import { LeadTimeline } from './lead-timeline';
 import { useLead, useLeadMutations } from './leads-api';
 import { StageBar } from './stage-bar';
@@ -60,6 +61,7 @@ export function LeadPageScreen({ id }: { id: string }) {
       <div className="grid gap-3 lg:grid-cols-[22rem_1fr]">
         <div className="space-y-3">
           <LeadDetailsCard lead={l} canEdit={canEdit} />
+          <LeadProjectsCard lead={l} canEdit={canEdit} />
           <ScoreCard score={l.score} />
           <ConsentCard leadId={l.id} canEdit={canEdit} timeZone={tz} />
           <EnquiriesCard leadId={l.id} />

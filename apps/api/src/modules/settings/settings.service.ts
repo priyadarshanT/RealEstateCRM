@@ -29,6 +29,12 @@ export class SettingsService {
     return SETTING_DEFINITIONS[key].parse(row.value) as SettingValue<K>;
   }
 
+  /** A setting that has no default row (e.g. finance.numbering until the Admin sets it). */
+  async find<K extends SettingKey>(key: K): Promise<SettingValue<K> | undefined> {
+    const row = await this.repo.find(key);
+    return row ? (SETTING_DEFINITIONS[key].parse(row.value) as SettingValue<K>) : undefined;
+  }
+
   async update(key: string, value: Record<string, unknown>): Promise<SettingDto> {
     if (!isSettingKey(key)) throw new ProblemException(422, 'UNKNOWN_SETTING', 'Unknown setting', `There is no setting called "${key}".`);
     const parsed = SETTING_DEFINITIONS[key].safeParse(value);

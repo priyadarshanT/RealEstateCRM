@@ -4,6 +4,7 @@ import { Alert, Button, Card, CardBody, CardHeader, Field, Input, Loading, Table
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
+import { NumberingCard } from './numbering-card';
 
 type Scoring = { budget_fit: number; project_match: number; source_quality: number; engagement: number };
 
@@ -14,7 +15,7 @@ const WEIGHTS: { key: keyof Scoring; label: string }[] = [
   { key: 'engagement', label: 'Engagement' },
 ];
 
-/** Response time (10-minute rule, SRS §3.4), lead scoring weights (§2.24) and currencies (§11.5). */
+/** Response time (10-minute rule, SRS §3.4), lead scoring weights (§2.24), currencies and invoice numbering (§11.5). */
 export function RulesTab() {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: async () => unwrap(await api.GET('/settings')).data });
@@ -87,6 +88,7 @@ export function RulesTab() {
       {put.error ? <Alert className="lg:col-span-2">{errorMessage(put.error)}</Alert> : null}
       {put.isSuccess ? <Alert tone="success" className="lg:col-span-2">Saved.</Alert> : null}
       <CurrenciesCard />
+      <NumberingCard />
     </div>
   );
 }

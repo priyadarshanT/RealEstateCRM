@@ -1,4 +1,4 @@
-import { BarChart3, Building2, CalendarDays, Landmark, LayoutDashboard, MessagesSquare, Settings, Users, UserRound, type LucideIcon } from 'lucide-react';
+import { BarChart3, Building2, CalendarDays, Landmark, Receipt, LayoutDashboard, MessagesSquare, Settings, Users, UserRound, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -8,13 +8,14 @@ export interface NavItem {
   anyOf: string[];
 }
 
-// Menu in the wireframe order (SRS §1). Invoices & POs and Attendance (Phase 3) are added with their modules.
+// Menu in the wireframe order (SRS §1). Attendance (Phase 3) is added with its module.
 export const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, anyOf: ['leads.view'] },
   { href: '/leads', label: 'Leads', icon: UserRound, anyOf: ['leads.view'] },
   { href: '/tasks', label: 'Tasks & Calendar', icon: CalendarDays, anyOf: ['leads.view'] },
   { href: '/messages', label: 'WhatsApp & Email', icon: MessagesSquare, anyOf: ['messages.send', 'campaigns.create', 'campaigns.approve'] },
   { href: '/projects', label: 'Projects', icon: Landmark, anyOf: ['leads.view'] },
+  { href: '/finance', label: 'Invoices & POs', icon: Receipt, anyOf: ['finance.create'] },
   { href: '/reports', label: 'Reports', icon: BarChart3, anyOf: ['leads.view'] },
   { href: '/team', label: 'Team', icon: Users, anyOf: ['users.manage'] },
   { href: '/organization', label: 'Organization', icon: Building2, anyOf: ['settings.manage', 'billing.view'] },

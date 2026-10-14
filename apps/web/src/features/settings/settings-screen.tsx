@@ -14,7 +14,7 @@ const TABS = [
   { key: 'connections', label: 'Connections' },
   { key: 'stages', label: 'Stages, reasons & sources' },
   { key: 'assignment', label: 'Assignment' },
-  { key: 'rules', label: 'Response time, scoring & currency' },
+  { key: 'rules', label: 'Response time, scoring, currency & numbering' },
   { key: 'templates', label: 'Templates' },
   { key: 'marketing', label: 'Campaigns & events' },
 ];

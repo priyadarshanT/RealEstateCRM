@@ -47,6 +47,6 @@ import { StripeEventProcessor, StripeWebhookController } from './stripe-events';
     },
     { provide: PDF_RENDERER, inject: [APP_CONFIG], useFactory: (c: AppConfig) => new GotenbergRenderer(c.GOTENBERG_URL) },
   ],
-  exports: [BillingCoreService, BillingService, SignupService, SUBSCRIPTION_STATUS, STRIPE_GATEWAY, IDENTITY_PROVIDER],
+  exports: [BillingCoreService, BillingService, SignupService, SUBSCRIPTION_STATUS, STRIPE_GATEWAY, IDENTITY_PROVIDER, BOT_CHECK],
 })
 export class BillingModule {}

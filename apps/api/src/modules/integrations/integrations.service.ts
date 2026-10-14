@@ -238,6 +238,16 @@ export class IntegrationsService {
     return row;
   }
 
+  /** A user's own connected account (Google Workspace or Microsoft 365) for meeting links and calendar sync. */
+  async connectedUserAccount(provider: 'google_workspace' | 'microsoft_365', userId: string): Promise<IntegrationRow | undefined> {
+    const [row] = await this.db.current
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.provider, provider), eq(integrations.scope, 'user'), eq(integrations.userId, userId), eq(integrations.status, 'connected')))
+      .limit(1);
+    return row;
+  }
+
   /** Stored credentials of an integration (secret store), parsed. */
   async credentials(row: IntegrationRow): Promise<Record<string, string>> {
     if (!row.secretRef) return {};

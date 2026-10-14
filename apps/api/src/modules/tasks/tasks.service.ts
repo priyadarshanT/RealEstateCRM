@@ -242,6 +242,43 @@ export class TasksService {
     await this.leads.setNextFollowUp(leadId, row?.next ?? null);
   }
 
+  /** The calendar task for a meeting or viewing (no signed-in user when a client books on the booking page). */
+  async createForMeeting(input: { leadId: string; meetingId: string; assignedUserId: string; type: 'meeting' | 'viewing'; title: string; dueAt: Date; durationMinutes: number; createdBy: string | null }): Promise<TaskRow> {
+    const [task] = await this.db.current
+      .insert(tasks)
+      .values({
+        tenantId: this.db.currentTenantId!,
+        leadId: input.leadId,
+        assignedUserId: input.assignedUserId,
+        type: input.type,
+        title: input.title,
+        dueAt: input.dueAt,
+        durationMinutes: input.durationMinutes,
+        reminderMinutes: 30,
+        meetingId: input.meetingId,
+        createdBy: input.createdBy,
+      })
+      .returning();
+    await this.refreshFollowUp(input.leadId);
+    return task!;
+  }
+
+  /** Moves, closes or cancels the open task of a meeting when the meeting changes. */
+  async syncMeetingTask(meetingId: string, change: { dueAt?: Date; durationMinutes?: number; status?: 'completed' | 'cancelled'; userId?: string | null }): Promise<void> {
+    const [task] = await this.db.current.select().from(tasks).where(and(eq(tasks.meetingId, meetingId), eq(tasks.status, 'open'))).limit(1);
+    if (!task) return;
+    await this.db.current
+      .update(tasks)
+      .set({
+        ...(change.dueAt ? { dueAt: change.dueAt, remindedAt: null, overdueAlertedAt: null } : {}),
+        ...(change.durationMinutes ? { durationMinutes: change.durationMinutes } : {}),
+        ...(change.status ? { status: change.status, ...(change.status === 'completed' ? { completedAt: new Date(), completedBy: change.userId ?? null } : {}) } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, task.id));
+    if (task.leadId) await this.refreshFollowUp(task.leadId);
+  }
+
   private async createNext(p: Principal, leadId: string, assignee: string, next: NextActionDto): Promise<TaskRow> {
     const [task] = await this.db.current
       .insert(tasks)

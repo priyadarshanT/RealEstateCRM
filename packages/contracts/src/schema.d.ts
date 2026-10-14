@@ -1571,7 +1571,7 @@ export interface paths {
         };
         /**
          * List message templates
-         * @description **Permission:** `messages.send`
+         * @description **Permission:** `messages.send or settings.manage`
          */
         get: operations["listMessageTemplates"];
         put?: never;
@@ -1595,7 +1595,7 @@ export interface paths {
         };
         /**
          * Get message template
-         * @description **Permission:** `messages.send`
+         * @description **Permission:** `messages.send or settings.manage`
          */
         get: operations["getMessageTemplate"];
         put?: never;

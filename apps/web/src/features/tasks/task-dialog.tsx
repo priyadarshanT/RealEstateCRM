@@ -6,6 +6,7 @@ import { errorMessage } from '@/core/api';
 import { isoToLocalInput, localInputToIso } from '@/core/format';
 import { useUsers } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
+import { MeetingForm } from '@/features/calendar/meeting-form';
 import { TASK_TYPE_LABEL, useTaskMutations, type Task } from './tasks-api';
 
 const REMINDERS = [0, 5, 15, 30, 60, 1440];
@@ -67,19 +68,37 @@ export function TaskDialog({
     if (ok) onOpenChange(false);
   }
 
+  const typeSelect = (
+    <Field label="Type">
+      <Select value={type} onChange={(e) => setType(e.target.value as Task['type'])}>
+        {(Object.keys(TASK_TYPE_LABEL) as Task['type'][]).map((t) => (
+          <option key={t} value={t}>
+            {TASK_TYPE_LABEL[t]}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+
+  // A new meeting or viewing with a lead is a real meeting: link, no double booking, client confirmation (SRS §3.8–3.11).
+  if (!task && leadId && (type === 'meeting' || type === 'viewing')) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent title={`${TASK_TYPE_LABEL[type]} · ${leadName ?? 'lead'}`}>
+          <div className="space-y-3">
+            {typeSelect}
+            <MeetingForm key={type} leadId={leadId} type={type} onDone={() => onOpenChange(false)} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={task ? 'Edit task' : leadName ? `Schedule · ${leadName}` : 'New task'}>
         <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
-          <Field label="Type">
-            <Select value={type} onChange={(e) => setType(e.target.value as Task['type'])}>
-              {(Object.keys(TASK_TYPE_LABEL) as Task['type'][]).map((t) => (
-                <option key={t} value={t}>
-                  {TASK_TYPE_LABEL[t]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {typeSelect}
           <Field label="When">
             <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} required />
           </Field>

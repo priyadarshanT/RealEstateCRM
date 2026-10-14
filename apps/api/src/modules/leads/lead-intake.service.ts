@@ -34,6 +34,8 @@ export interface IntakeInput {
   rawPayload?: unknown;
   submittedAt?: Date;
   note?: string | null;
+  /** New leads only: owned by this user instead of the assignment rules (e.g. the agent's booking page). */
+  ownerUserId?: string | null;
 }
 
 export type IntakeResult =
@@ -121,7 +123,8 @@ export class LeadIntakeService {
     if (input.projectId) await this.repo.addProject(lead.id, input.projectId);
     if (input.note) await this.repo.addActivity(lead.id, { type: 'note', summary: 'Note added', body: input.note });
     await this.audit.record('create', 'leads', lead.id, { fullName: [null, lead.fullName], sourceId: [null, lead.sourceId] });
-    await this.events.publish('lead.created', { tenantId: lead.tenantId, leadId: lead.id, ownerUserId: null, sourceId: lead.sourceId, viaIntake: true });
+    if (input.ownerUserId) await this.leads.changeOwner(lead.id, input.ownerUserId, { method: 'manual', note: `Enquiry via ${source.name}` });
+    await this.events.publish('lead.created', { tenantId: lead.tenantId, leadId: lead.id, ownerUserId: input.ownerUserId ?? null, sourceId: lead.sourceId, viaIntake: true });
     return { status: 'created', leadId: lead.id };
   }
 

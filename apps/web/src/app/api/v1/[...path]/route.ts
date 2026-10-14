@@ -5,7 +5,7 @@ import { apiUrl, PLATFORM_SESSION_COOKIE, SESSION_COOKIE } from '@/core/config';
 // Forwards /api/v1/* to the NestJS API and adds the login token from the httpOnly session cookie,
 // so the token is never readable by browser scripts and the API needs no CORS.
 
-const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'if-match', 'idempotency-key'];
+const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'if-match', 'idempotency-key', 'cf-turnstile-token'];
 const FORWARD_RESPONSE_HEADERS = ['content-type', 'content-disposition', 'etag', 'location', 'x-request-id', 'retry-after'];
 
 async function forward(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }): Promise<Response> {

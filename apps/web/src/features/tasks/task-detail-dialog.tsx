@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { formatDateTime } from '@/core/format';
 import { byId, useColleagues } from '@/core/lookups';
+import { MeetingDetailDialog } from '@/features/calendar/meeting-detail-dialog';
 import { OutcomeForm } from './outcome-form';
 import { TaskDialog } from './task-dialog';
 import { OUTCOMES, TASK_TYPE_LABEL, useTaskMutations, type Task } from './tasks-api';
@@ -18,6 +19,7 @@ export function TaskDetailDialog({ task, onClose, timeZone }: { task: Task | nul
   const [completing, setCompleting] = useState(false);
 
   if (!task) return null;
+  if (task.meetingId) return <MeetingDetailDialog meetingId={task.meetingId} timeZone={timeZone} onClose={onClose} />;
   const isCall = task.type === 'call';
   const open = task.status === 'open';
   const overdue = open && Date.parse(task.dueAt) < Date.now();

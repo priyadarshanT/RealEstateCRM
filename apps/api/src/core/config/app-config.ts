@@ -51,6 +51,11 @@ const schema = z
      * SES; "simulate" (local development and tests) accepts and logs messages without calling Meta or AWS.
      */
     MESSAGING_MODE: z.enum(['live', 'simulate']).default('simulate'),
+    /**
+     * Google Meet / Teams links and calendar sync (SRS §3.8, §3.13): "live" uses each agent's connected Google or
+     * Microsoft account; "simulate" (local development and tests) generates stand-in links.
+     */
+    CALENDAR_MODE: z.enum(['live', 'simulate']).default('simulate'),
     /** PDF maker (Gotenberg 8, architecture §2). */
     GOTENBERG_URL: z.string().url().default('http://localhost:3001'),
     AUTH_MODE: z.enum(['cognito', 'dev']).default('cognito'),
@@ -67,6 +72,9 @@ const schema = z
     }
     if (env.NODE_ENV === 'production' && !env.TURNSTILE_SECRET) {
       ctx.addIssue({ code: 'custom', path: ['TURNSTILE_SECRET'], message: 'the bot check is required in production' });
+    }
+    if (env.CALENDAR_MODE === 'simulate' && env.NODE_ENV === 'production') {
+      ctx.addIssue({ code: 'custom', path: ['CALENDAR_MODE'], message: 'production creates real meeting links (CALENDAR_MODE=live)' });
     }
     if (env.MESSAGING_MODE === 'simulate' && env.NODE_ENV === 'production') {
       ctx.addIssue({ code: 'custom', path: ['MESSAGING_MODE'], message: 'production sends real messages (MESSAGING_MODE=live)' });

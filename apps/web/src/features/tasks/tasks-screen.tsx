@@ -1,7 +1,7 @@
 'use client';
 
 import { Alert, Badge, Button, Loading, Select, Table, Td, Th, Tr, cn } from '@crm/ui';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { formatDateTime } from '@/core/format';
@@ -10,6 +10,7 @@ import { useCan, useMe } from '@/core/session';
 import { apiDateRange, rangeFor, sameDay, shift, type CalendarView } from './calendar-range';
 import { TaskChip } from './task-chip';
 import { TaskDetailDialog } from './task-detail-dialog';
+import { BookingPageEditor } from '@/features/calendar/booking-page-editor';
 import { TaskDialog } from './task-dialog';
 import { TASK_TYPE_LABEL, useTasks, type Task } from './tasks-api';
 
@@ -33,6 +34,7 @@ export function TasksScreen() {
   const [type, setType] = useState<Task['type'] | ''>('');
   const [creating, setCreating] = useState(false);
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  const [bookingPage, setBookingPage] = useState(false);
 
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
   const assignedUserId = whose === 'mine' ? me.data?.user.id : whose === 'all' ? undefined : whose;
@@ -112,6 +114,9 @@ export function TasksScreen() {
         </Select>
         <span className="ml-auto" />
         {overdue.data?.data.length ? <Badge tone="danger">{overdue.data.data.length} overdue</Badge> : null}
+        <Button variant="outline" size="sm" onClick={() => setBookingPage(true)}>
+          <CalendarClock /> My booking page
+        </Button>
         {can('leads.edit') ? (
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus /> New task
@@ -185,6 +190,7 @@ export function TasksScreen() {
 
       <TaskDialog open={creating} onOpenChange={setCreating} />
       <TaskDetailDialog task={openTask} timeZone={tz} onClose={() => setOpenTask(null)} />
+      <BookingPageEditor open={bookingPage} onClose={() => setBookingPage(false)} />
     </div>
   );
 }

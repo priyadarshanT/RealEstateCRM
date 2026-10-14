@@ -123,6 +123,38 @@ export class MessagingService implements OnModuleInit {
     return MessageDto.from(message!);
   }
 
+  /**
+   * Automatic message from the company (e.g. a meeting confirmation, SRS §3.10): no signed-in sender, never to an
+   * opted-out lead, only when the channel is connected. Returns why it was not sent instead of failing the caller.
+   */
+  async sendSystem(input: { leadId: string; channel: Channel; subject?: string; body: string; summary: string }): Promise<{ sent: true; messageId: string } | { sent: false; reason: string }> {
+    const lead = await this.leads.findRow(input.leadId);
+    const address = input.channel === 'whatsapp' ? lead?.phonePrimary : lead?.email;
+    if (!lead || !address) return { sent: false, reason: `no ${input.channel === 'whatsapp' ? 'phone' : 'email'}` };
+    if (await this.optedOut(input.leadId, input.channel)) return { sent: false, reason: 'opted out' };
+    const sender = await this.integrations.connectedSender(PROVIDER[input.channel]);
+    if (!sender) return { sent: false, reason: `${LABEL[input.channel]} not connected` };
+    const conversation = await this.conversationFor(input.leadId, input.channel, sender.id, address);
+    // WhatsApp outside the 24-hour window would need a template; system messages use email there.
+    if (input.channel === 'whatsapp' && !windowOpen(conversation)) return { sent: false, reason: 'WhatsApp needs a template outside 24 hours' };
+    const [message] = await this.db.current
+      .insert(messages)
+      .values({
+        tenantId: this.db.currentTenantId!,
+        conversationId: conversation.id,
+        leadId: input.leadId,
+        direction: 'outbound',
+        subject: input.subject ?? null,
+        body: input.body,
+        status: 'queued',
+      })
+      .returning();
+    await this.db.current.update(conversations).set({ lastMessageAt: new Date() }).where(eq(conversations.id, conversation.id));
+    await this.leads.addActivity(input.leadId, { type: input.channel, summary: input.summary, body: input.body.slice(0, 1000), actorUserId: null, links: { messageId: message!.id } });
+    await this.queue.send<SendJob>('send-message', { tenantId: this.db.currentTenantId!, messageId: message!.id });
+    return { sent: true, messageId: message!.id };
+  }
+
   /** send-message job: hands the message to the provider and records the result. */
   async deliver(messageId: string, params?: string[]): Promise<void> {
     const [message] = await this.db.current.select().from(messages).where(eq(messages.id, messageId)).limit(1);

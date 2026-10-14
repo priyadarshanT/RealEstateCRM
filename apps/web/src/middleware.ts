@@ -3,7 +3,7 @@ import { PLATFORM_SESSION_COOKIE, SESSION_COOKIE } from '@/core/config';
 
 // Signed-out visitors to CRM screens are sent to the login page. The API still checks every token itself.
 
-const PUBLIC_PREFIXES = ['/login', '/signup', '/auth/', '/api/', '/_next/', '/favicon'];
+const PUBLIC_PREFIXES = ['/login', '/signup', '/book/', '/auth/', '/api/', '/_next/', '/favicon'];
 
 export function middleware(req: NextRequest): Response {
   const { pathname } = req.nextUrl;

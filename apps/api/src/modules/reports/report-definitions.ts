@@ -3,6 +3,7 @@ import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { CampaignsService } from '../messaging/campaigns.service';
+import { Phase3Deps, phase3Reports } from './sales-finance-reports';
 import { dayAfter, dayStart } from '../../core/http/dates';
 import { LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
 import { MarketingService } from '../marketing/marketing.service';
@@ -24,11 +25,11 @@ export interface ReportOutput {
 export interface ReportDefinition {
   key: string;
   name: string;
-  module: 'leads' | 'marketing' | 'performance' | 'events' | 'messaging' | 'integrations';
-  /** Who may run it (any of these), when narrower than every report user (e.g. connection health for Admins). */
+  module: 'leads' | 'marketing' | 'performance' | 'events' | 'messaging' | 'integrations' | 'sales' | 'finance' | 'attendance';
+  /** Who may run it (any of these); without it, users with leads.view (e.g. connection health only for Admins). */
   permissions?: string[];
   /** Who may export it (SRS §8.9: Admin only by default). */
-  exportPermission: 'leads.export' | 'reports.export';
+  exportPermission: 'leads.export' | 'reports.export' | 'attendance.export';
   filters: string[];
   columns: ReportColumn[];
   paged: boolean;
@@ -62,11 +63,12 @@ interface Deps {
   labels: LabelsService;
   campaigns: CampaignsService;
   integrations: IntegrationsService;
+  phase3: Omit<Phase3Deps, 'labels'>;
 }
 
 /**
  * Reports (SRS §8.2–8.6): Phase 1 lead, marketing, performance and event reports; Phase 2 WhatsApp / email campaigns
- * and integration failures. Phase 3 reports (sales, invoices, attendance) are added with their modules.
+ * and integration failures; Phase 3 sales, finance and attendance reports (sales-finance-reports.ts).
  */
 export function reportDefinitions(d: Deps): ReportDefinition[] {
   const leadColumns: ReportColumn[] = [
@@ -160,7 +162,7 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
     leadList('leads_lost', 'Lost and invalid leads', 'lost'),
     leadList('re_enquiries', 'Re-enquiries', 're_enquiries'),
     grouped('leads_by_source', 'Leads by source', 'source', (ids) => d.labels.sources(ids)),
-    grouped('leads_by_project', 'Leads by project', 'project', async (ids) => new Map(ids.map((i) => [i, i]))),
+    grouped('leads_by_project', 'Leads by project', 'project', (ids) => d.phase3.projects.names(ids)),
     grouped('leads_by_campaign', 'Leads by campaign', 'campaign', (ids) => d.labels.campaigns(ids)),
     grouped('leads_by_form', 'Leads by form', 'form', async (ids) => new Map(ids.map((i) => [i, i]))),
     grouped('leads_by_stage', 'Leads by stage', 'stage', (ids) => d.labels.stages(ids)),
@@ -408,5 +410,6 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
         return { rows, totals: { received: sum('received'), processed: sum('processed'), retrying: sum('retrying'), failed: sum('failed') } };
       },
     },
+    ...phase3Reports({ ...d.phase3, labels: d.labels }),
   ];
 }

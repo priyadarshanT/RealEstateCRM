@@ -179,4 +179,43 @@ describe('finance', () => {
     const list = await finance.get(`/api/v1/commissions?dealId=${dealId}`).expect(200);
     expect(list.body.data).toHaveLength(2);
   });
+
+  it('Phase 3 reports: sales by project and unit, invoices, payments, balances, commissions; dashboard cards', async () => {
+    const today = `${year}-12-31`; // the deal is dated in Dubai time; the whole year covers it
+    const keys = (await finance.get('/api/v1/reports').expect(200)).body.data.map((r: { key: string }) => r.key);
+    expect(keys).toEqual(expect.arrayContaining(['invoices', 'payments', 'balances', 'commissions']));
+    expect(keys).not.toContain('sales_by_project'); // sales reports follow lead access (leads.view)
+    const agentKeys = (await ali.get('/api/v1/reports').expect(200)).body.data.map((r: { key: string }) => r.key);
+    expect(agentKeys).toContain('sales_by_project');
+    expect(agentKeys).not.toContain('invoices');
+    await ali.get('/api/v1/reports/balances').expect(403);
+
+    const byProject = (await admin.get(`/api/v1/reports/sales_by_project?from=${year}-01-01&to=${today}`).expect(200)).body;
+    expect(byProject.rows.find((r: { project: string }) => r.project === 'Finance Spec Residences')).toMatchObject({ sold: 1, salesValue: '1500000.00' });
+    const byUnit = (await admin.get(`/api/v1/reports/sales_by_unit?from=${year}-01-01&to=${today}`).expect(200)).body;
+    expect(byUnit.rows.find((r: { unit: string }) => r.unit === '701')).toMatchObject({ stage: 'Sold', saleValue: '1500000.00', listPrice: '1500000.00' });
+
+    const invoices = (await finance.get(`/api/v1/reports/invoices?from=${year}-01-01&to=${year}-12-31`).expect(200)).body;
+    expect(invoices.rows.find((r: { number: string }) => r.number === `INV-${year}-0001`)).toMatchObject({ status: 'Cancelled', balance: '0.00' });
+    const payments = (await finance.get(`/api/v1/reports/payments?from=${year}-01-01&to=${year}-12-31`).expect(200)).body;
+    expect(payments.rows.filter((r: { number: string }) => r.number === `INV-${year}-0001`).map((r: { amount: string }) => r.amount)).toEqual(['50000.00', '55000.00', '-105000.00']);
+    const balances = (await finance.get(`/api/v1/reports/balances?from=${year - 1}-01-01&to=${year}-12-31`).expect(200)).body;
+    expect(balances.rows.find((r: { counterparty: string }) => r.counterparty === 'Finance Spec Developer')).toMatchObject({ invoices: 1, invoiced: '31500.00', received: '10000.00', balance: '21500.00', overdue: '21500.00' });
+    const commissions = (await finance.get('/api/v1/reports/commissions').expect(200)).body;
+    expect(commissions.rows.find((r: { userId: string }) => r.userId === AGENT.id)).toMatchObject({ deals: 1, pending: '37500.00', total: '37500.00' });
+
+    // A Director sees both: leads (dashboard) and finance (unpaid invoices).
+    const DIRECTOR = { id: 'b0000000-0000-0000-0000-0000000000f4', email: 'director.spec@b.ae', tenant: TENANT_B };
+    await ownerQuery(
+      `INSERT INTO users (id, tenant_id, email, full_name, role_id, status)
+       SELECT $1, $2, $3, 'Dana Director', id, 'active' FROM roles WHERE tenant_id = $2 AND key = 'director' ON CONFLICT (id) DO NOTHING`,
+      [DIRECTOR.id, TENANT_B, DIRECTOR.email],
+    );
+    const director = await signIn(app, DIRECTOR);
+    const dash = (await director.get(`/api/v1/dashboard?from=${year}-01-01&to=${today}`).expect(200)).body;
+    expect(Number(dash.kpis.unpaidInvoices)).toBeGreaterThanOrEqual(21500);
+    const adminDash = (await admin.get(`/api/v1/dashboard?from=${year}-01-01&to=${today}`).expect(200)).body;
+    expect(Number(adminDash.kpis.salesValue)).toBeGreaterThanOrEqual(1500000);
+    expect(adminDash.kpis.unpaidInvoices).toBe('0.00'); // not a finance user
+  });
 });

@@ -7,13 +7,13 @@ import { useMemo, useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
 import { DATE_PRESETS, presetRange, type DatePreset } from '@/core/date-range';
 import { formatDateTime, formatMoney } from '@/core/format';
-import { useCampaigns, useSources, useTeams, useUsers } from '@/core/lookups';
+import { useCampaigns, useProjectList, useSources, useTeams, useUsers } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from './export-button';
 
 type Definition = Schemas['ReportDefinition'];
 
-const MODULE_LABEL: Record<string, string> = { leads: 'Leads', marketing: 'Marketing', performance: 'Performance', events: 'Events', messaging: 'WhatsApp and email', integrations: 'Integrations' };
+const MODULE_LABEL: Record<string, string> = { leads: 'Leads', marketing: 'Marketing', performance: 'Performance', events: 'Events', messaging: 'WhatsApp and email', integrations: 'Integrations', sales: 'Sales', finance: 'Finance', attendance: 'Attendance' };
 
 /** Pick a report, filter by date, source, campaign, team and agent, and export (SRS §8). */
 export function ReportsScreen() {
@@ -56,7 +56,7 @@ export function ReportsScreen() {
             </div>
           ))}
         </nav>
-        {current ? <ReportView key={current.key} def={current} canExport={can('reports.export')} timeZone={me.data?.user.timezone} /> : <EmptyState title="No reports" />}
+        {current ? <ReportView key={current.key} def={current} canExport={can(current.module === 'attendance' ? 'attendance.export' : 'reports.export')} timeZone={me.data?.user.timezone} /> : <EmptyState title="No reports" />}
       </div>
     </div>
   );
@@ -65,6 +65,7 @@ export function ReportsScreen() {
 function ReportView({ def, canExport, timeZone }: { def: Definition; canExport: boolean; timeZone?: string }) {
   const can = useCan();
   const sources = useSources();
+  const projects = useProjectList();
   const campaigns = useCampaigns();
   const teams = useTeams();
   const users = useUsers();
@@ -118,6 +119,16 @@ function ReportView({ def, canExport, timeZone }: { def: Definition; canExport: 
             </option>
           ))}
         </Select>
+        {has('projectId') ? (
+          <Select className="h-8 w-auto text-xs" value={f.projectId ?? ''} onChange={(e) => set('projectId', e.target.value)} aria-label="Project">
+            <option value="">All projects</option>
+            {projects.data?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
         {has('sourceId') ? (
           <Select className="h-8 w-auto text-xs" value={f.sourceId ?? ''} onChange={(e) => set('sourceId', e.target.value)} aria-label="Source">
             <option value="">All sources</option>

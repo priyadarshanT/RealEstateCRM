@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
@@ -402,6 +402,34 @@ export class DocumentsService implements OnModuleInit {
     }
   }
 
+  /** Approved documents issued in a period (invoices report). */
+  async forReport(from?: string, to?: string): Promise<FinanceDocumentRow[]> {
+    return this.db.current
+      .select()
+      .from(financeDocuments)
+      .where(and(ne(financeDocuments.status, 'draft'), from ? gte(financeDocuments.issueDate, from) : undefined, to ? lte(financeDocuments.issueDate, to) : undefined))
+      .orderBy(asc(financeDocuments.issueDate), asc(financeDocuments.number));
+  }
+
+  /** Payments and refunds received in a period, with their document (payments report). */
+  async paymentsForReport(from?: string, to?: string) {
+    return this.db.current
+      .select({ p: payments, number: financeDocuments.number, docType: financeDocuments.docType, counterpartyId: financeDocuments.counterpartyId })
+      .from(payments)
+      .innerJoin(financeDocuments, eq(financeDocuments.id, payments.documentId))
+      .where(and(from ? gte(payments.paidOn, from) : undefined, to ? lte(payments.paidOn, to) : undefined))
+      .orderBy(asc(payments.paidOn), asc(payments.createdAt));
+  }
+
+  /** What clients and developers still owe on sales invoices, in the base currency (dashboard card). */
+  async unpaidSalesBalance(): Promise<string> {
+    const [row] = await this.db.current
+      .select({ total: sql<string>`coalesce(sum(${financeDocuments.balance} * ${financeDocuments.rateToBase}), 0)::numeric(14,2)::text` })
+      .from(financeDocuments)
+      .where(and(eq(financeDocuments.docType, 'sales_invoice'), inArray(financeDocuments.status, ['approved', 'sent', 'partially_paid', 'overdue'])));
+    return Number(row?.total ?? 0).toFixed(2);
+  }
+
   /** Approved sales invoices to a developer (commission invoices) for other modules. */
   async findRow(id: string): Promise<FinanceDocumentRow | undefined> {
     return this.find(id);
@@ -550,7 +578,8 @@ export class DocumentsService implements OnModuleInit {
   }
 
   private async event(documentId: string, action: DocEventAction, fromStatus: string | null, toStatus: string | null, actorUserId: string | null, note?: string, paymentId?: string): Promise<void> {
-    await this.db.current.insert(documentEvents).values({ tenantId: this.db.currentTenantId!, documentId, action, fromStatus, toStatus, actorUserId, note: note ?? null, paymentId: paymentId ?? null });
+    // clock_timestamp(): several events of one request keep their order (now() is the same for the whole transaction).
+    await this.db.current.insert(documentEvents).values({ tenantId: this.db.currentTenantId!, documentId, action, fromStatus, toStatus, actorUserId, note: note ?? null, paymentId: paymentId ?? null, createdAt: sql`clock_timestamp()` });
   }
 
   private async today(): Promise<string> {

@@ -21,6 +21,6 @@ import { FinanceController } from './finance.controller';
     CommissionsService,
     { provide: DOCUMENT_PDF, inject: [APP_CONFIG], useFactory: (c: AppConfig) => new GotenbergDocumentPdf(c.GOTENBERG_URL) },
   ],
-  exports: [DocumentsService, CommissionsService],
+  exports: [DocumentsService, CommissionsService, CounterpartiesService],
 })
 export class FinanceModule {}

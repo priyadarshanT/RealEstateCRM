@@ -5,6 +5,7 @@ import { DbService } from '../../core/database/db.service';
 import { Problems } from '../../core/errors/problem';
 import { pgCode, PG_FOREIGN_KEY_VIOLATION } from '../../core/errors/pg';
 import { EventBus } from '../../core/events/domain-events';
+import { LeaveService } from '../attendance/leave.service';
 import { LeadsService } from '../leads/leads.service';
 import { OrganizationDirectory, UserSummary } from '../organization/directory.service';
 import { LeadConfigService } from '../settings/lead-config.service';
@@ -31,6 +32,7 @@ export class AssignmentService implements OnModuleInit {
     private readonly config: LeadConfigService,
     private readonly audit: AuditService,
     private readonly events: EventBus,
+    private readonly leave: LeaveService,
   ) {}
 
   onModuleInit(): void {
@@ -52,7 +54,10 @@ export class AssignmentService implements OnModuleInit {
     const rules = await this.db.current.select().from(assignmentRules).where(eq(assignmentRules.isActive, true)).orderBy(asc(assignmentRules.priority));
     for (const rule of rules) {
       if (!matches(rule.conditions, facts.lead, facts.projectIds)) continue;
-      const pool = (await this.poolOf(rule)).filter((u) => !excludeUserIds.includes(u.id) && (!rule.respectAvailability || isAvailable(u)));
+      const candidates = (await this.poolOf(rule)).filter((u) => !excludeUserIds.includes(u.id) && (!rule.respectAvailability || isAvailable(u)));
+      // Agents on approved leave today do not get new leads (SRS §9.6).
+      const away = rule.respectAvailability ? await this.leave.onLeave(candidates.map((u) => u.id)) : new Set<string>();
+      const pool = candidates.filter((u) => !away.has(u.id));
       const chosen = this.strategy.pick(pool, rule.lastAssignedUserId);
       if (!chosen) continue;
       await this.db.current.update(assignmentRules).set({ lastAssignedUserId: chosen.id }).where(eq(assignmentRules.id, rule.id));
@@ -72,7 +77,9 @@ export class AssignmentService implements OnModuleInit {
     const missed = new Set([...(await this.leads.missedBy(leadId)), missedUserId]);
     const teamId = lead.teamId ?? (await this.directory.user(missedUserId))?.teamId ?? null;
     const team = teamId ? await this.directory.teamMembers(teamId) : [];
-    const candidates = team.filter((u) => isAvailable(u) && !missed.has(u.id));
+    const available = team.filter((u) => isAvailable(u) && !missed.has(u.id));
+    const away = await this.leave.onLeave(available.map((u) => u.id));
+    const candidates = available.filter((u) => !away.has(u.id));
     const next = this.strategy.pick(candidates, missedUserId);
     if (next) {
       const reason = await this.config.reasonByKey('reassignment', 'no_response');

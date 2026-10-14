@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
@@ -112,6 +112,11 @@ export class CommissionsService implements OnModuleInit {
     const [after] = await this.db.current.update(commissions).set({ status: 'paid', paidOn, updatedAt: new Date() }).where(eq(commissions.id, id)).returning();
     await this.audit.record('update', 'commissions', id, { status: ['approved', 'paid'], paidOn: [null, paidOn] });
     return after!;
+  }
+
+  /** Every commission (commissions report); cancelled ones are left out. */
+  async forReport(): Promise<CommissionRow[]> {
+    return this.db.current.select().from(commissions).where(ne(commissions.status, 'cancelled'));
   }
 
   private async find(id: string): Promise<CommissionRow | undefined> {

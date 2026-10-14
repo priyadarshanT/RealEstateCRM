@@ -1,3 +1,9 @@
+import { DealsModule } from '../deals/deals.module';
+import { DealsService } from '../deals/deals.service';
+import { DocumentsService } from '../finance/documents.service';
+import { FinanceModule } from '../finance/finance.module';
+import { ProjectsModule } from '../projects/projects.module';
+import { ProjectsService } from '../projects/projects.service';
 import { Controller, Get, Injectable, Module, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsOptional } from 'class-validator';
@@ -73,7 +79,7 @@ export class DashboardDto {
 /**
  * Role-based dashboard (SRS §10): every figure is limited to the user's data scope, so an agent sees their own
  * work, managers their teams, GM and Director the company. Each bucket carries the GET /leads filters behind it.
- * Sales value and unpaid invoices come from deals and invoices (Phase 3) and are 0 until then.
+ * Sales value comes from sold deals in the period; unpaid invoices (sales invoice balances) show for finance users.
  */
 @Injectable()
 export class DashboardService {
@@ -82,6 +88,9 @@ export class DashboardService {
     private readonly tasks: TasksService,
     private readonly marketing: MarketingService,
     private readonly labels: LabelsService,
+    private readonly deals: DealsService,
+    private readonly documents: DocumentsService,
+    private readonly projects: ProjectsService,
   ) {}
 
   async get(p: Principal, f: ReportFilters): Promise<DashboardDto> {
@@ -99,6 +108,10 @@ export class DashboardService {
       this.reporting.trend(p, f),
       this.marketing.spendByDay(f.from, f.to, f.sourceId, f.campaignId),
     ]);
+    const sold = (await this.deals.forReport(p, f)).filter((d) => d.stage === 'sold' && d.saleDate && (!f.from || d.saleDate >= f.from) && (!f.to || d.saleDate <= f.to));
+    const salesValue = sold.reduce((n, d) => n + Number(d.saleValue), 0).toFixed(2);
+    const unpaidInvoices = p.permissions.has('finance.create') ? await this.documents.unpaidSalesBalance() : ZERO;
+    const projectNames = await this.projects.names(byProject.map((b) => b.key));
     const [sources, stages, agents, campaigns] = await Promise.all([
       this.labels.sources(bySource.map((b) => b.key)),
       this.labels.stages(byStage.map((b) => b.key)),
@@ -108,9 +121,9 @@ export class DashboardService {
     const days = new Set([...trend.map((t) => t.date), ...spend.keys()]);
     const trendOf = new Map(trend.map((t) => [t.date, t]));
     return {
-      kpis: { ...kpis, meetingsToday, salesValue: ZERO, unpaidInvoices: ZERO },
+      kpis: { ...kpis, meetingsToday, salesValue, unpaidInvoices },
       bySource: bySource.map((b) => ({ key: b.key, label: sources.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, sourceId: b.key } })),
-      byProject: byProject.map((b) => ({ key: b.key, label: b.key, count: b.count, drillDown: { ...base, projectId: b.key } })),
+      byProject: byProject.map((b) => ({ key: b.key, label: projectNames.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, projectId: b.key } })),
       byStage: byStage.map((b) => ({ key: b.key, label: stages.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, stageId: b.key } })),
       byAgent: byAgent.map((b) =>
         b.key === 'none'
@@ -160,7 +173,7 @@ export class DashboardController {
 
 /** KPIs and charts (SRS §10). */
 @Module({
-  imports: [LeadsModule, TasksModule, MarketingModule, SettingsModule, OrganizationModule],
+  imports: [LeadsModule, TasksModule, MarketingModule, SettingsModule, OrganizationModule, DealsModule, FinanceModule, ProjectsModule],
   controllers: [DashboardController],
   providers: [DashboardService, LabelsService],
   exports: [LabelsService],

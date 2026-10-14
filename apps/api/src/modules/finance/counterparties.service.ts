@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
 import { pgCode, PG_CHECK_VIOLATION, PG_FOREIGN_KEY_VIOLATION } from '../../core/errors/pg';
@@ -36,6 +36,13 @@ export class CounterpartiesService {
       .orderBy(asc(counterparties.name), asc(counterparties.id))
       .limit(q.limit + 1);
     return toPage(rows, q.limit, (r) => [r.name, r.id], CounterpartyDto.from);
+  }
+
+  /** Names by ID (reports). */
+  async names(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db.current.select({ id: counterparties.id, name: counterparties.name }).from(counterparties).where(inArray(counterparties.id, ids));
+    return new Map(rows.map((r) => [r.id, r.name]));
   }
 
   async get(id: string): Promise<CounterpartyRow> {

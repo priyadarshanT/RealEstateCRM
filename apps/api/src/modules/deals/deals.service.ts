@@ -216,6 +216,14 @@ export class DealsService implements OnModuleInit {
     return after!;
   }
 
+  /** Deals the principal may see (their leads), optionally for one project or agent (sales reports, dashboard). */
+  async forReport(p: Principal, f: { projectId?: string; userId?: string }): Promise<DealRow[]> {
+    return this.db.current
+      .select()
+      .from(deals)
+      .where(and(await this.scope.visibleLeadIdIn(p, deals.leadId), f.projectId ? eq(deals.projectId, f.projectId) : undefined, f.userId ? eq(deals.ownerUserId, f.userId) : undefined));
+  }
+
   /** Deals by ID for other modules (finance links, reports); no scope check. */
   async findRow(id: string): Promise<DealRow | undefined> {
     return this.find(id);

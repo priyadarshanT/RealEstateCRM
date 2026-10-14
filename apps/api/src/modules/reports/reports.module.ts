@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Qu
 import { ApiAcceptedResponse, ApiBearerAuth, ApiOkResponse, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import { AllowWhenReadOnly, CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
+import { AllowWhenReadOnly, CurrentPrincipal, RequireAnyPermission, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
 import { PageQuery } from '../../core/http/pagination';
 import { IsDateOnly, IsUuid } from '../../core/http/validators';
@@ -10,6 +10,10 @@ import { DashboardModule, FiltersQuery } from '../dashboard/dashboard.service';
 import { EventsModule } from '../events/events.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { AttendanceModule } from '../attendance/attendance.module';
+import { DealsModule } from '../deals/deals.module';
+import { FinanceModule } from '../finance/finance.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { LeadsModule } from '../leads/leads.module';
 import { MarketingModule } from '../marketing/marketing.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -35,7 +39,7 @@ export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get('reports')
-  @RequirePermission('leads.view')
+  @RequireAnyPermission('leads.view', 'finance.create', 'attendance.view')
   @ApiOperation({ operationId: 'listReports', summary: 'Available reports' })
   @ApiOkResponse({ type: ReportList })
   list(@CurrentPrincipal() p: Principal): ReportList {
@@ -43,7 +47,7 @@ export class ReportsController {
   }
 
   @Get('reports/:key')
-  @RequirePermission('leads.view')
+  @RequireAnyPermission('leads.view', 'finance.create', 'attendance.view')
   @ApiOperation({ operationId: 'runReport', summary: 'Run a report' })
   @ApiOkResponse({ type: ReportResultDto })
   run(@CurrentPrincipal() p: Principal, @Param('key') key: string, @Query() query: RunReportQuery): Promise<ReportResultDto> {
@@ -78,7 +82,7 @@ export class ReportsController {
 
 /** Reports, exports and the export log (SRS §8). */
 @Module({
-  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule],
+  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule, DealsModule, FinanceModule, AttendanceModule, ProjectsModule],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

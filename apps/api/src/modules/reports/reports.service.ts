@@ -20,6 +20,13 @@ import { MarketingService } from '../marketing/marketing.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TasksService } from '../tasks/tasks.service';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { AttendanceService } from '../attendance/attendance.service';
+import { DealsService } from '../deals/deals.service';
+import { CommissionsService } from '../finance/commissions.service';
+import { CounterpartiesService } from '../finance/counterparties.service';
+import { DocumentsService } from '../finance/documents.service';
+import { ProjectsService } from '../projects/projects.service';
+import { UnitsService } from '../projects/units.service';
 import { CampaignsService } from '../messaging/campaigns.service';
 import { ReportColumn, reportDefinitions, ReportDefinition } from './report-definitions';
 
@@ -122,8 +129,17 @@ export class ReportsService implements OnModuleInit {
     private readonly directory: OrganizationDirectory,
     campaigns: CampaignsService,
     integrations: IntegrationsService,
+    deals: DealsService,
+    documents: DocumentsService,
+    commissions: CommissionsService,
+    counterparties: CounterpartiesService,
+    attendance: AttendanceService,
+    projects: ProjectsService,
+    units: UnitsService,
   ) {
-    this.reports = new Map(reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations }).map((r) => [r.key, r]));
+    this.reports = new Map(
+      reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations, phase3: { deals, documents, commissions, counterparties, attendance, projects, units } }).map((r) => [r.key, r]),
+    );
   }
 
   onModuleInit(): void {
@@ -320,5 +336,6 @@ async function toXlsx(name: string, columns: ReportColumn[], rows: Record<string
 }
 
 function allowed(p: Principal, r: ReportDefinition): boolean {
-  return !r.permissions || r.permissions.some((k) => p.permissions.has(k));
+  // Reports without their own permission are lead reports (leads.view).
+  return (r.permissions ?? ['leads.view']).some((k) => p.permissions.has(k));
 }

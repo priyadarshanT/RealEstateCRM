@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
 import { pgCode, PG_FOREIGN_KEY_VIOLATION, PG_UNIQUE_VIOLATION } from '../../core/errors/pg';
@@ -124,6 +124,13 @@ export class UnitsService implements OnModuleInit {
     const unit = await this.get(id);
     if (unit.status === status) return unit;
     return this.applyChange(id, { status, reason }, userId);
+  }
+
+  /** Units by ID (reports). */
+  async byIds(ids: string[]): Promise<Map<string, UnitRow>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db.current.select().from(units).where(inArray(units.id, ids));
+    return new Map(rows.map((r) => [r.id, r]));
   }
 
   async history(id: string): Promise<UnitChangeDto[]> {

@@ -10,6 +10,10 @@ Dubai Real Estate CRM, multi-tenant SaaS (B2B brokerages + B2C agents). Two deve
    **Need approval:** What / Where / Why / Affects → Approve / Reject
 5. Changes already decided by stakeholders are applied directly across docs and code.
 
+## Branches
+- All work is committed and pushed to `develop`.
+- `feature/api-skeleton` is the stable branch. It only receives work from `develop` through a pull request the architect merges. Never push to it directly.
+
 ## Code rules
 - SOLID, loosely coupled modular monolith (NestJS API + worker, Next.js web).
 - A module never reads or writes another module's tables; use its service or domain events.

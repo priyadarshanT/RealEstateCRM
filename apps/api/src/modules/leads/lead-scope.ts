@@ -39,6 +39,21 @@ export class LeadScope {
     return sql`${column} IN (SELECT ${leads.id} FROM ${leads} WHERE ${cond})`;
   }
 
+  /**
+   * For other modules' report figures (deals, invoices, commissions): "column is a lead with this source, campaign,
+   * event, team or owner" (SRS §8.1, §10.6), as a subquery owned by the leads module. Undefined when no filter is set.
+   */
+  leadIdMatching(column: SQL | AnyColumn, f: { sourceId?: string; campaignId?: string; eventId?: string; teamId?: string; ownerUserId?: string }): SQL | undefined {
+    const cond = and(
+      f.sourceId ? eq(leads.sourceId, f.sourceId) : undefined,
+      f.campaignId ? eq(leads.campaignId, f.campaignId) : undefined,
+      f.eventId ? eq(leads.eventId, f.eventId) : undefined,
+      f.teamId ? eq(leads.teamId, f.teamId) : undefined,
+      f.ownerUserId ? eq(leads.ownerUserId, f.ownerUserId) : undefined,
+    );
+    return cond ? sql`${column} IN (SELECT ${leads.id} FROM ${leads} WHERE ${cond})` : undefined;
+  }
+
   /** Leads within the principal's role scope only (not through shares): owner or a manager above them. */
   async managed(p: Principal): Promise<SQL | undefined> {
     if (p.dataScope === 'company') return undefined;

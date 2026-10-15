@@ -24,6 +24,8 @@ export interface Phase3Deps {
 const money = (n: number) => n.toFixed(2);
 const inPeriod = (d: string | null, from?: string, to?: string) => !!d && (!from || d >= from) && (!to || d <= to);
 const FINANCE = ['finance.create'];
+/** Every report filters by date, project, source, campaign, team and agent (SRS §8.1). */
+const FILTERS = ['from', 'to', 'projectId', 'sourceId', 'campaignId', 'teamId', 'userId'];
 const DOC_LABEL = { sales_invoice: 'Sales invoice', purchase_invoice: 'Purchase invoice', purchase_order: 'Purchase order' } as const;
 const STATUS_LABEL: Record<string, string> = { approved: 'Approved', sent: 'Sent', partially_paid: 'Partially paid', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled', refunded: 'Refunded' };
 
@@ -34,7 +36,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       name: 'Sales by project',
       module: 'sales',
       exportPermission: 'reports.export',
-      filters: ['from', 'to', 'projectId', 'userId'],
+      filters: FILTERS,
       columns: [
         { key: 'project', label: 'Project', type: 'text' },
         { key: 'eois', label: 'EOIs', type: 'number' },
@@ -72,7 +74,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       name: 'Sales by unit',
       module: 'sales',
       exportPermission: 'reports.export',
-      filters: ['from', 'to', 'projectId', 'userId'],
+      filters: FILTERS,
       columns: [
         { key: 'project', label: 'Project', type: 'text' },
         { key: 'unit', label: 'Unit', type: 'text' },
@@ -115,7 +117,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       module: 'finance',
       permissions: FINANCE,
       exportPermission: 'reports.export',
-      filters: ['from', 'to'],
+      filters: FILTERS,
       columns: [
         { key: 'number', label: 'Number', type: 'text' },
         { key: 'type', label: 'Type', type: 'text' },
@@ -130,7 +132,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       ],
       paged: false,
       async run(_p, f) {
-        const docs = await d.documents.forReport(f.from, f.to);
+        const docs = await d.documents.forReport(f);
         const names = await d.counterparties.names([...new Set(docs.map((x) => x.counterpartyId))]);
         const rows = docs.map((x) => ({
           documentId: x.id,
@@ -162,7 +164,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       module: 'finance',
       permissions: FINANCE,
       exportPermission: 'reports.export',
-      filters: ['from', 'to'],
+      filters: FILTERS,
       columns: [
         { key: 'paidOn', label: 'Date', type: 'date' },
         { key: 'number', label: 'Document', type: 'text' },
@@ -175,7 +177,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       ],
       paged: false,
       async run(_p, f) {
-        const list = await d.documents.paymentsForReport(f.from, f.to);
+        const list = await d.documents.paymentsForReport(f);
         const names = await d.counterparties.names([...new Set(list.map((x) => x.counterpartyId))]);
         const rows = list.map((x) => ({
           paymentId: x.p.id,
@@ -197,7 +199,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       module: 'finance',
       permissions: FINANCE,
       exportPermission: 'reports.export',
-      filters: ['from', 'to'],
+      filters: FILTERS,
       columns: [
         { key: 'counterparty', label: 'Client / developer', type: 'text' },
         { key: 'invoices', label: 'Invoices', type: 'number' },
@@ -208,7 +210,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       ],
       paged: false,
       async run(_p, f) {
-        const docs = (await d.documents.forReport(f.from, f.to)).filter((x) => x.docType === 'sales_invoice' && x.status !== 'cancelled');
+        const docs = (await d.documents.forReport(f)).filter((x) => x.docType === 'sales_invoice' && x.status !== 'cancelled');
         const by = new Map<string, { invoices: number; invoiced: number; received: number; balance: number; overdue: number }>();
         for (const x of docs) {
           const r = by.get(x.counterpartyId) ?? { invoices: 0, invoiced: 0, received: 0, balance: 0, overdue: 0 };
@@ -234,7 +236,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       module: 'finance',
       permissions: FINANCE,
       exportPermission: 'reports.export',
-      filters: ['from', 'to', 'userId'],
+      filters: FILTERS,
       columns: [
         { key: 'agent', label: 'Agent', type: 'text' },
         { key: 'deals', label: 'Deals', type: 'number' },
@@ -245,9 +247,7 @@ export function phase3Reports(d: Phase3Deps): ReportDefinition[] {
       ],
       paged: false,
       async run(_p, f) {
-        const list = (await d.commissions.forReport()).filter(
-          (c) => (!f.userId || c.userId === f.userId) && inPeriod(c.paidOn ?? c.createdAt.toISOString().slice(0, 10), f.from, f.to),
-        );
+        const list = (await d.commissions.forReport(f)).filter((c) => inPeriod(c.paidOn ?? c.createdAt.toISOString().slice(0, 10), f.from, f.to));
         const by = new Map<string, { deals: Set<string>; pending: number; approved: number; paid: number }>();
         for (const c of list) {
           const r = by.get(c.userId) ?? { deals: new Set<string>(), pending: 0, approved: 0, paid: 0 };

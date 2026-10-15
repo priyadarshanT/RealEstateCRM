@@ -23,6 +23,7 @@ describe('finance', () => {
   let invoiceId: string;
   let dealId: string;
   let developerId: string;
+  let projectId: string;
   let AHMED: string;
   const year = new Date().getFullYear();
 
@@ -41,7 +42,7 @@ describe('finance', () => {
     const sourceId = (await admin.get('/api/v1/lead-sources?limit=100').expect(200)).body.data[0].id;
     AHMED = (await admin.post('/api/v1/leads').send({ fullName: 'Ahmed', phonePrimary: '+971507880001', sourceId, ownerUserId: AGENT.id }).expect(201)).body.id;
     developerId = (await admin.post('/api/v1/developers').send({ name: 'Finance Spec Developer', trn: '100200300400003' }).expect(201)).body.id;
-    const projectId = (await admin.post('/api/v1/projects').send({ developerId, name: 'Finance Spec Residences' }).expect(201)).body.id;
+    projectId = (await admin.post('/api/v1/projects').send({ developerId, name: 'Finance Spec Residences' }).expect(201)).body.id;
     const unitId = (await admin.post('/api/v1/units').send({ projectId, unitNumber: '701', propertyType: 'apartment', bedrooms: 1, sizeSqft: 800, price: '1500000' }).expect(201)).body.id;
     dealId = (await ali.post('/api/v1/deals').send({ leadId: AHMED, projectId, unitId }).expect(201)).body.id;
     await ali.post(`/api/v1/deals/${dealId}/stage`).send({ stage: 'sold', amount: '1500000' }).expect(200);
@@ -217,5 +218,35 @@ describe('finance', () => {
     const adminDash = (await admin.get(`/api/v1/dashboard?from=${year}-01-01&to=${today}`).expect(200)).body;
     expect(Number(adminDash.kpis.salesValue)).toBeGreaterThanOrEqual(1500000);
     expect(adminDash.kpis.unpaidInvoices).toBe('0.00'); // not a finance user
+  });
+
+  it('Phase 3 reports and the dashboard sales figures follow the project, source, campaign, team and agent filters (SRS §8.1, §10.6)', async () => {
+    const period = `from=${year - 1}-01-01&to=${year}-12-31`;
+    const other = (await admin.post('/api/v1/projects').send({ developerId, name: 'Finance Spec Other' }).expect(201)).body.id;
+    const emptySource = (await admin.post('/api/v1/lead-sources').send({ type: 'website', name: 'Finance Spec no leads', qualityScore: 50 }).expect(201)).body.id;
+    const defs = (await finance.get('/api/v1/reports').expect(200)).body.data as { key: string; filters: string[] }[];
+    for (const key of ['invoices', 'payments', 'balances', 'commissions']) {
+      expect(defs.find((r) => r.key === key)!.filters).toEqual(expect.arrayContaining(['from', 'to', 'projectId', 'sourceId', 'campaignId', 'teamId', 'userId']));
+    }
+
+    const rows = async (c: Client, key: string, query: string) => (await c.get(`/api/v1/reports/${key}?${period}&${query}`).expect(200)).body.rows;
+    expect((await rows(finance, 'invoices', `projectId=${projectId}`)).map((r: { number: string }) => r.number)).toContain(`INV-${year}-0001`);
+    expect(await rows(finance, 'invoices', `projectId=${other}`)).toEqual([]);
+    expect(await rows(finance, 'invoices', `sourceId=${emptySource}`)).toEqual([]);
+    expect((await rows(finance, 'payments', `projectId=${projectId}`)).length).toBeGreaterThan(0);
+    expect(await rows(finance, 'payments', `projectId=${other}`)).toEqual([]);
+    expect(await rows(finance, 'balances', `projectId=${other}`)).toEqual([]);
+    expect((await rows(finance, 'commissions', `projectId=${projectId}`)).find((r: { userId: string }) => r.userId === AGENT.id)).toMatchObject({ deals: 1, pending: '37500.00' });
+    expect(await rows(finance, 'commissions', `projectId=${other}`)).toEqual([]);
+    expect(await rows(finance, 'commissions', `sourceId=${emptySource}`)).toEqual([]);
+    expect((await rows(admin, 'sales_by_project', `sourceId=${emptySource}`)).find((r: { project: string }) => r.project === 'Finance Spec Residences')).toBeUndefined();
+
+    // Dashboard: sales value and the sales line follow the filters; unpaid invoices follow them too.
+    const dash = (await admin.get(`/api/v1/dashboard?${period}&projectId=${projectId}`).expect(200)).body;
+    expect(dash.kpis.salesValue).toBe('1500000.00');
+    expect(dash.trend.reduce((n: number, t: { sales: string }) => n + Number(t.sales), 0)).toBe(1500000);
+    expect((await admin.get(`/api/v1/dashboard?${period}&sourceId=${emptySource}`).expect(200)).body.kpis.salesValue).toBe('0.00');
+    const director = await signIn(app, { email: 'director.spec@b.ae', tenant: TENANT_B });
+    expect((await director.get(`/api/v1/dashboard?${period}&projectId=${other}`).expect(200)).body.kpis.unpaidInvoices).toBe('0.00');
   });
 });

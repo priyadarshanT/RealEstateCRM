@@ -11,7 +11,7 @@ import { RequestContext } from '../../core/http/request-context';
 import { DealsService } from '../deals/deals.service';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { CounterpartiesService } from './counterparties.service';
-import { DocumentsService } from './documents.service';
+import { DocumentsService, FinanceReportFilters } from './documents.service';
 import { CommissionDto, CommissionInputDto, CommissionListQuery } from './dto/finance.dto';
 import { CommissionRow, commissions } from './finance.schema';
 import { fromCents, percentOf } from './money';
@@ -114,9 +114,12 @@ export class CommissionsService implements OnModuleInit {
     return after!;
   }
 
-  /** Every commission (commissions report); cancelled ones are left out. */
-  async forReport(): Promise<CommissionRow[]> {
-    return this.db.current.select().from(commissions).where(ne(commissions.status, 'cancelled'));
+  /** Commissions for the report by agent, deal project and the deal lead's source, campaign, event and team; cancelled ones are left out. */
+  async forReport(f: Omit<FinanceReportFilters, 'from' | 'to'> = {}): Promise<CommissionRow[]> {
+    return this.db.current
+      .select()
+      .from(commissions)
+      .where(and(ne(commissions.status, 'cancelled'), f.userId ? eq(commissions.userId, f.userId) : undefined, this.deals.dealIdMatching(commissions.dealId, f)));
   }
 
   private async find(id: string): Promise<CommissionRow | undefined> {

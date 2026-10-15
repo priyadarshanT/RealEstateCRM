@@ -79,7 +79,8 @@ export class DashboardDto {
 /**
  * Role-based dashboard (SRS §10): every figure is limited to the user's data scope, so an agent sees their own
  * work, managers their teams, GM and Director the company. Each bucket carries the GET /leads filters behind it.
- * Sales value comes from sold deals in the period; unpaid invoices (sales invoice balances) show for finance users.
+ * Sales value and the sales trend come from deals sold in the period; unpaid invoices (sales invoice balances now)
+ * show for finance users. Both follow the same filters as the lead figures.
  */
 @Injectable()
 export class DashboardService {
@@ -110,7 +111,9 @@ export class DashboardService {
     ]);
     const sold = (await this.deals.forReport(p, f)).filter((d) => d.stage === 'sold' && d.saleDate && (!f.from || d.saleDate >= f.from) && (!f.to || d.saleDate <= f.to));
     const salesValue = sold.reduce((n, d) => n + Number(d.saleValue), 0).toFixed(2);
-    const unpaidInvoices = p.permissions.has('finance.create') ? await this.documents.unpaidSalesBalance() : ZERO;
+    const unpaidInvoices = p.permissions.has('finance.create') ? await this.documents.unpaidSalesBalance(f) : ZERO;
+    const salesByDay = new Map<string, number>();
+    for (const d of sold) salesByDay.set(d.saleDate!, (salesByDay.get(d.saleDate!) ?? 0) + Number(d.saleValue));
     const projectNames = await this.projects.names(byProject.map((b) => b.key));
     const [sources, stages, agents, campaigns] = await Promise.all([
       this.labels.sources(bySource.map((b) => b.key)),
@@ -118,7 +121,7 @@ export class DashboardService {
       this.labels.users(byAgent.map((b) => b.key).filter((k) => k !== 'none')),
       this.labels.campaigns(byCampaign.map((b) => b.key).filter((k) => k !== 'none')),
     ]);
-    const days = new Set([...trend.map((t) => t.date), ...spend.keys()]);
+    const days = new Set([...trend.map((t) => t.date), ...spend.keys(), ...salesByDay.keys()]);
     const trendOf = new Map(trend.map((t) => [t.date, t]));
     return {
       kpis: { ...kpis, meetingsToday, salesValue, unpaidInvoices },
@@ -139,7 +142,7 @@ export class DashboardService {
         leads: trendOf.get(date)?.leads ?? 0,
         qualified: trendOf.get(date)?.qualified ?? 0,
         spend: spend.get(date) ?? ZERO,
-        sales: ZERO,
+        sales: (salesByDay.get(date) ?? 0).toFixed(2),
       })),
       refreshedAt: new Date().toISOString(),
     };

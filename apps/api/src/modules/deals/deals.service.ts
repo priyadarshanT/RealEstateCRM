@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { AnyColumn, and, desc, eq, inArray, ne, sql, SQL } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
@@ -25,6 +25,16 @@ const UNIT_STATUS: Partial<Record<DealStage, UnitStatus>> = { eoi: 'on_hold', bo
 const LABEL: Record<DealStage, string> = { offer: 'Offer', eoi: 'EOI', booking: 'Booking', sold: 'Sold', cancelled: 'Cancelled' };
 /** Stages that hold the unit for this deal. */
 const HOLDING: DealStage[] = ['eoi', 'booking', 'sold'];
+
+/** Report filters that apply to deals: the project, the agent (deal owner) and the lead's source, campaign, event and team. */
+export interface DealReportFilters {
+  projectId?: string;
+  sourceId?: string;
+  campaignId?: string;
+  eventId?: string;
+  teamId?: string;
+  userId?: string;
+}
 
 const unitBooked = () => new ProblemException(409, 'UNIT_ALREADY_BOOKED', 'Unit already taken', 'Another deal holds this unit. Choose another unit.');
 
@@ -216,12 +226,25 @@ export class DealsService implements OnModuleInit {
     return after!;
   }
 
-  /** Deals the principal may see (their leads), optionally for one project or agent (sales reports, dashboard). */
-  async forReport(p: Principal, f: { projectId?: string; userId?: string }): Promise<DealRow[]> {
+  /** Deals the principal may see (their leads), with the report filters (sales reports, dashboard; SRS §8.1, §10.6). */
+  async forReport(p: Principal, f: DealReportFilters): Promise<DealRow[]> {
     return this.db.current
       .select()
       .from(deals)
-      .where(and(await this.scope.visibleLeadIdIn(p, deals.leadId), f.projectId ? eq(deals.projectId, f.projectId) : undefined, f.userId ? eq(deals.ownerUserId, f.userId) : undefined));
+      .where(and(await this.scope.visibleLeadIdIn(p, deals.leadId), this.matching(f), f.userId ? eq(deals.ownerUserId, f.userId) : undefined));
+  }
+
+  /**
+   * For other modules that store a deal ID (commissions): "column is a deal of this project whose lead has this
+   * source, campaign, event or team", as a subquery owned by the deals module. Undefined when no filter is set.
+   */
+  dealIdMatching(column: SQL | AnyColumn, f: Omit<DealReportFilters, 'userId'>): SQL | undefined {
+    const cond = this.matching(f);
+    return cond ? sql`${column} IN (SELECT ${deals.id} FROM ${deals} WHERE ${cond})` : undefined;
+  }
+
+  private matching(f: Omit<DealReportFilters, 'userId'>): SQL | undefined {
+    return and(f.projectId ? eq(deals.projectId, f.projectId) : undefined, this.scope.leadIdMatching(deals.leadId, f));
   }
 
   /** Deals by ID for other modules (finance links, reports); no scope check. */

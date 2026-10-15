@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, sql, SQL } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
@@ -14,6 +14,7 @@ import { RequestContext } from '../../core/http/request-context';
 import { MAILER, Mailer } from '../../core/mail/mailer';
 import { QueueService } from '../../core/queue/queue.service';
 import { DealsService } from '../deals/deals.service';
+import { LeadScope } from '../leads/lead-scope';
 import { LeadsService } from '../leads/leads.service';
 import { OrganizationService } from '../organization/organization.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -53,6 +54,18 @@ const DEFAULT_NUMBERING: Record<DocType, { prefix: string; include_year: boolean
 const TITLE: Record<DocType, string> = { sales_invoice: 'Tax invoice', purchase_invoice: 'Purchase invoice', purchase_order: 'Purchase order' };
 const LABEL: Record<DocType, string> = { sales_invoice: 'Invoice', purchase_invoice: 'Purchase invoice', purchase_order: 'Purchase order' };
 
+/** Report filters on finance documents (SRS §8.1, §8.8). */
+export interface FinanceReportFilters {
+  from?: string;
+  to?: string;
+  projectId?: string;
+  sourceId?: string;
+  campaignId?: string;
+  eventId?: string;
+  teamId?: string;
+  userId?: string;
+}
+
 const notDraft = () => new ProblemException(422, 'NOT_DRAFT', 'Not a draft', 'Approved documents cannot be edited. Cancel and reissue.');
 
 /**
@@ -73,6 +86,7 @@ export class DocumentsService implements OnModuleInit {
     private readonly files: FilesService,
     private readonly counterparties: CounterpartiesService,
     private readonly leads: LeadsService,
+    private readonly scope: LeadScope,
     private readonly projects: ProjectsService,
     private readonly units: UnitsService,
     private readonly deals: DealsService,
@@ -403,30 +417,30 @@ export class DocumentsService implements OnModuleInit {
   }
 
   /** Approved documents issued in a period (invoices report). */
-  async forReport(from?: string, to?: string): Promise<FinanceDocumentRow[]> {
+  async forReport(f: FinanceReportFilters): Promise<FinanceDocumentRow[]> {
     return this.db.current
       .select()
       .from(financeDocuments)
-      .where(and(ne(financeDocuments.status, 'draft'), from ? gte(financeDocuments.issueDate, from) : undefined, to ? lte(financeDocuments.issueDate, to) : undefined))
+      .where(and(ne(financeDocuments.status, 'draft'), f.from ? gte(financeDocuments.issueDate, f.from) : undefined, f.to ? lte(financeDocuments.issueDate, f.to) : undefined, this.matching(f)))
       .orderBy(asc(financeDocuments.issueDate), asc(financeDocuments.number));
   }
 
   /** Payments and refunds received in a period, with their document (payments report). */
-  async paymentsForReport(from?: string, to?: string) {
+  async paymentsForReport(f: FinanceReportFilters) {
     return this.db.current
       .select({ p: payments, number: financeDocuments.number, docType: financeDocuments.docType, counterpartyId: financeDocuments.counterpartyId })
       .from(payments)
       .innerJoin(financeDocuments, eq(financeDocuments.id, payments.documentId))
-      .where(and(from ? gte(payments.paidOn, from) : undefined, to ? lte(payments.paidOn, to) : undefined))
+      .where(and(f.from ? gte(payments.paidOn, f.from) : undefined, f.to ? lte(payments.paidOn, f.to) : undefined, this.matching(f)))
       .orderBy(asc(payments.paidOn), asc(payments.createdAt));
   }
 
-  /** What clients and developers still owe on sales invoices, in the base currency (dashboard card). */
-  async unpaidSalesBalance(): Promise<string> {
+  /** What clients and developers still owe on sales invoices now, in the base currency (dashboard card, its filters but not its dates). */
+  async unpaidSalesBalance(f: FinanceReportFilters = {}): Promise<string> {
     const [row] = await this.db.current
       .select({ total: sql<string>`coalesce(sum(${financeDocuments.balance} * ${financeDocuments.rateToBase}), 0)::numeric(14,2)::text` })
       .from(financeDocuments)
-      .where(and(eq(financeDocuments.docType, 'sales_invoice'), inArray(financeDocuments.status, ['approved', 'sent', 'partially_paid', 'overdue'])));
+      .where(and(eq(financeDocuments.docType, 'sales_invoice'), inArray(financeDocuments.status, ['approved', 'sent', 'partially_paid', 'overdue']), this.matching(f)));
     return Number(row?.total ?? 0).toFixed(2);
   }
 
@@ -436,6 +450,14 @@ export class DocumentsService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------- helpers
+  /** Report filters on a document: its project, and the source, campaign, event, team and owner (agent) of its lead. */
+  private matching(f: FinanceReportFilters): SQL | undefined {
+    return and(
+      f.projectId ? eq(financeDocuments.projectId, f.projectId) : undefined,
+      this.scope.leadIdMatching(financeDocuments.leadId, { ...f, ownerUserId: f.userId }),
+    );
+  }
+
   private async find(id: string): Promise<FinanceDocumentRow | undefined> {
     const [row] = await this.db.current.select().from(financeDocuments).where(eq(financeDocuments.id, id)).limit(1);
     return row;

@@ -1,15 +1,17 @@
 'use client';
 
-import { Alert, Button, EmptyState, Loading, Select, Table, Td, Th, Tr, cn } from '@crm/ui';
+import { Alert, Button, EmptyState, Loading, Select, cn } from '@crm/ui';
+import { ChevronLeft, ChevronRight, FileBarChart2 } from 'lucide-react';
 import type { Schemas } from '@crm/contracts';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
 import { DATE_PRESETS, presetRange, type DatePreset } from '@/core/date-range';
-import { formatDateTime, formatMoney } from '@/core/format';
+import { formatMoney } from '@/core/format';
 import { useCampaigns, useProjectList, useSources, useTeams, useUsers } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from './export-button';
+import { ReportGrid } from './report-grid';
 
 type Definition = Schemas['ReportDefinition'];
 
@@ -34,9 +36,14 @@ export function ReportsScreen() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-semibold">Reports{current ? ` › ${current.name}` : ''}</h1>
-      <div className="grid gap-3 lg:grid-cols-[15rem_1fr]">
-        <nav className="h-fit rounded-lg border border-border bg-surface p-2">
+      <div className="flex items-center gap-2">
+        <FileBarChart2 className="size-5 text-primary" />
+        <h1 className="text-lg font-semibold">
+          Reports{current ? <span className="font-normal text-muted-foreground"> › {current.name}</span> : null}
+        </h1>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
+        <nav className="h-fit rounded-xl border border-border bg-surface p-2 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
           {groups.map(([module, items]) => (
             <div key={module} className="mb-2">
               <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase text-muted-foreground">{MODULE_LABEL[module] ?? module}</p>
@@ -46,8 +53,8 @@ export function ReportsScreen() {
                   type="button"
                   onClick={() => setKey(d.key)}
                   className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm',
-                    d.key === current?.key ? 'bg-primary/10 font-semibold text-primary' : 'hover:bg-muted',
+                    'block w-full rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors',
+                    d.key === current?.key ? 'bg-primary font-medium text-primary-foreground shadow-sm' : 'text-foreground/80 hover:bg-muted',
                   )}
                 >
                   {d.name}
@@ -72,6 +79,7 @@ function ReportView({ def, canExport, timeZone }: { def: Definition; canExport: 
   const [preset, setPreset] = useState<DatePreset>('thisMonth');
   const [f, setF] = useState<Record<string, string>>({});
   const [cursor, setCursor] = useState<string | undefined>();
+  const [history, setHistory] = useState<(string | undefined)[]>([]);
   const has = (name: string) => def.filters.includes(name);
 
   const filters = useMemo(() => {
@@ -86,33 +94,34 @@ function ReportView({ def, canExport, timeZone }: { def: Definition; canExport: 
     queryFn: async () => unwrap(await api.GET('/reports/{key}', { params: { path: { key: def.key }, query: { ...filters, limit: 100, ...(cursor ? { cursor } : {}) } } })),
   });
 
-  const types = new Map(def.columns.map((c) => [c.key, c.type]));
-  const show = (key: string, v: unknown) => {
-    if (v === null || v === undefined || v === '') return '—';
-    switch (types.get(key)) {
-      case 'money':
-        return formatMoney(String(v));
-      case 'percent':
-        return `${Number(v).toFixed(1)}%`;
-      case 'datetime':
-        return formatDateTime(String(v), timeZone);
-      case 'number':
-        return Number(v).toLocaleString('en-US', { maximumFractionDigits: 1 });
-      default:
-        return String(v);
-    }
-  };
   const set = (k: string, v: string) => {
     setF((x) => ({ ...x, [k]: v }));
     setCursor(undefined);
+    setHistory([]);
   };
-  const columns = (result.data?.columns ?? def.columns).map((c) => ({ key: c.key ?? '', label: c.label ?? '' }));
+  const typeOf = new Map(def.columns.map((c) => [c.key ?? '', c.type]));
+  const columns = (result.data?.columns ?? def.columns).map((c) => ({ key: c.key ?? '', label: c.label ?? '', type: typeOf.get(c.key ?? '') }));
   const totals = result.data?.totals as Record<string, unknown> | undefined;
+  const rows = (result.data?.rows ?? []) as Record<string, unknown>[];
+  const total = (result.data?.page as { total?: number } | undefined)?.total;
+  const start = history.length * 100;
+  const types = new Map(columns.map((c) => [c.key, c.type]));
+  const labelOf = new Map(columns.map((c) => [c.key, c.label]));
+  // Totals as summary cards above the grid (lead lists have none; grouped and finance reports do).
+  const summary = totals && Object.keys(totals).length > 1
+    ? Object.entries(totals)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .slice(0, 6)
+        .map(([k, v]) => ({
+          label: labelOf.get(k) ?? k.replace(/([A-Z])/g, ' $1').replace(/^./, (x) => x.toUpperCase()),
+          value: types.get(k) === 'money' ? formatMoney(String(v)) : types.get(k) === 'percent' ? `${Number(v).toFixed(1)}%` : typeof v === 'number' ? v.toLocaleString('en-US') : String(v),
+        }))
+    : [];
 
   return (
     <div className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-start gap-2">
-        <Select className="h-8 w-auto text-xs" value={preset} onChange={(e) => (setPreset(e.target.value as DatePreset), setCursor(undefined))} aria-label="Period">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2.5 shadow-sm">
+        <Select className="h-8 w-auto text-xs" value={preset} onChange={(e) => (setPreset(e.target.value as DatePreset), setCursor(undefined), setHistory([]))} aria-label="Period">
           {DATE_PRESETS.map((p) => (
             <option key={p.key} value={p.key}>
               {p.label}
@@ -170,54 +179,64 @@ function ReportView({ def, canExport, timeZone }: { def: Definition; canExport: 
           </Select>
         ) : null}
         <span className="ml-auto" />
+        {result.data ? (
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+            {(total ?? rows.length).toLocaleString('en-US')} {(total ?? rows.length) === 1 ? 'row' : 'rows'}
+          </span>
+        ) : null}
         {canExport ? <ExportButton reportKey={def.key} filters={filters} /> : null}
       </div>
+
+      {summary.length ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {summary.map((s) => (
+            <div key={s.label} className="rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
+              <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+              <p className="mt-1 truncate text-lg font-semibold tabular-nums">{s.value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {result.error ? <Alert>{errorMessage(result.error)}</Alert> : null}
       {result.isLoading ? (
         <Loading />
       ) : (
-        <Table>
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <Th key={c.key}>{c.label}</Th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(result.data?.rows ?? []).map((row, i) => (
-              <Tr key={i}>
-                {columns.map((c) => (
-                  <Td key={c.key}>{show(c.key, (row as Record<string, unknown>)[c.key])}</Td>
-                ))}
-              </Tr>
-            ))}
-            {(result.data?.rows ?? []).length === 0 ? (
-              <tr>
-                <Td colSpan={columns.length} className="text-center text-muted-foreground">
-                  No rows for these filters.
-                </Td>
-              </tr>
-            ) : null}
-            {totals && Object.keys(totals).length ? (
-              <tr className="bg-primary/5 font-semibold">
-                {columns.map((c, i) => (
-                  <Td key={c.key}>{i === 0 && totals[c.key] === undefined ? 'Total' : totals[c.key] === undefined ? '' : show(c.key, totals[c.key])}</Td>
-                ))}
-              </tr>
-            ) : null}
-          </tbody>
-        </Table>
+        <ReportGrid columns={columns} rows={rows} totals={totals} timeZone={timeZone} loading={result.isFetching} />
       )}
-      {result.data?.page?.hasMore ? (
-        <div className="flex justify-center">
-          <Button variant="outline" size="sm" onClick={() => setCursor(result.data?.page?.nextCursor ?? undefined)}>
-            Next page
-          </Button>
+      {history.length || result.data?.page?.hasMore ? (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {rows.length ? start + 1 : 0}–{start + rows.length}
+            {total !== undefined ? ` of ${total.toLocaleString('en-US')}` : ''}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!history.length}
+              onClick={() => {
+                setCursor(history[history.length - 1]);
+                setHistory((h) => h.slice(0, -1));
+              }}
+            >
+              <ChevronLeft /> Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!result.data?.page?.hasMore}
+              onClick={() => {
+                setHistory((h) => [...h, cursor]);
+                setCursor(result.data?.page?.nextCursor ?? undefined);
+              }}
+            >
+              Next <ChevronRight />
+            </Button>
+          </div>
         </div>
       ) : null}
-      <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Totals here always match the Excel and CSV files. Every export is logged.</p>
+      <p className="text-xs text-muted-foreground">Totals here always match the Excel and CSV files. Every export is logged.</p>
     </div>
   );
 }

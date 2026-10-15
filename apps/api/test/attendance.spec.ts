@@ -162,6 +162,9 @@ describe('attendance', () => {
     const own = (await ali.get(`/api/v1/reports/attendance_monthly?from=${dubaiDate(-1)}&to=${dubaiDate(1)}`).expect(200)).body;
     expect(own.rows.map((r: { userId: string }) => r.userId)).toEqual([USERS.aliA.id]);
     await ali.post('/api/v1/reports/attendance_monthly/exports').send({ format: 'xlsx', filters: {} }).expect(403);
-    await admin.post('/api/v1/reports/attendance_monthly/exports').send({ format: 'xlsx', filters: { from: dubaiDate(-1), to: dubaiDate(1) } }).expect(202);
+    const exp = await admin.post('/api/v1/reports/attendance_monthly/exports').send({ format: 'xlsx', filters: { from: dubaiDate(-1), to: dubaiDate(1) } }).expect(202);
+    // Run the export here, so no job is left in the shared queue for other test files.
+    expect(await app.get(QueueService).drain('report-export')).toBe(1);
+    expect((await admin.get(`/api/v1/exports/${exp.body.id}`).expect(200)).body).toMatchObject({ status: 'completed', rowCount: report.rows.length });
   });
 });

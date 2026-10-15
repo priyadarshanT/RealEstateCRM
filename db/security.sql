@@ -43,11 +43,12 @@ REVOKE UPDATE, DELETE ON lead_inquiries, consents, activities FROM crm_app, crm_
 CREATE OR REPLACE FUNCTION current_tenant_id() RETURNS uuid LANGUAGE sql STABLE AS
 $$ SELECT nullif(current_setting('app.tenant_id', true), '')::uuid $$;
 
--- Row-level security on every table that has tenant_id
+-- Row-level security on every table that has tenant_id.
+-- Not signups: a sign-up is stored before its company exists (tenant_id is filled in when it completes), as in migration 0005.
 DO $$ DECLARE t text; BEGIN
   FOR t IN SELECT c.table_name FROM information_schema.columns c
            JOIN information_schema.tables x ON x.table_name = c.table_name AND x.table_schema = c.table_schema AND x.table_type = 'BASE TABLE'
-           WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id' LOOP
+           WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id' AND c.table_name <> 'signups' LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('CREATE POLICY tenant_isolation ON %I USING (tenant_id = current_tenant_id()) WITH CHECK (tenant_id = current_tenant_id())', t);

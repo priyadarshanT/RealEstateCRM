@@ -25,8 +25,23 @@ Run-Psql @("-d","postgres","-q","-v","ON_ERROR_STOP=1","-c","DROP DATABASE IF EX
 Write-Host "2/5 Tables (schema.sql)";     Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-f","schema.sql")
 Write-Host "3/5 Security (security.sql)"; Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-f","security.sql")
 Write-Host "4/5 Defaults (seed.sql)";     Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-o","NUL","-f","seed.sql")
+# Job queue tables (pg-boss, schema pgboss) are not in schema.sql; they come from their migration.
+Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-o","NUL","-f","migrations\0003_job_queue.sql")
+# The database now matches every file in migrations\: record them as applied for `pnpm db:migrate`
+# (same checksum as apps/api/src/core/database/migrations.ts: sha256 of the file without CR characters).
+$sha = [System.Security.Cryptography.SHA256]::Create()
+$sql = @("CREATE TABLE schema_migrations (version text PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now());")
+foreach ($f in Get-ChildItem migrations -Filter "*.sql" | Where-Object { $_.Name -match '^\d{4}_[a-z0-9_]+\.sql$' } | Sort-Object Name) {
+  $text = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) -replace "`r", ""
+  $hash = -join ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString("x2") })
+  $sql += "INSERT INTO schema_migrations (version, name, checksum) VALUES ('$($f.BaseName.Substring(0,4))', '$($f.BaseName.Substring(5))', '$hash');"
+}
+$sqlFile = Join-Path ([System.IO.Path]::GetTempPath()) "crm_schema_migrations.sql"
+[System.IO.File]::WriteAllText($sqlFile, ($sql -join "`n"))
+Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-f",$sqlFile)
+Remove-Item $sqlFile
 if ($Sample) { Write-Host "5/5 Sample data"; Run-Psql @("-d",$Database,"-q","-v","ON_ERROR_STOP=1","-o","NUL","-f","tests\sample_data.sql") } else { Write-Host "5/5 Sample data skipped" }
-$count = & $psql -d $Database -tAc "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'"
+$count = & $psql -d $Database -tAc "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'schema_migrations'"
 Write-Host "Tables created: $count" -ForegroundColor Green
 if ($Test) {
   $env:PGDATABASE = $Database

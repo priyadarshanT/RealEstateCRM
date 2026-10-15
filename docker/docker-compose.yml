@@ -1,0 +1,36 @@
+# Local services for development (README "Run the full app"). Local values only; never use them in AWS.
+#   docker compose -f docker/docker-compose.yml up -d                 file storage and the PDF maker
+#   docker compose -f docker/docker-compose.yml --profile db up -d    also PostgreSQL, if it is not installed on the PC
+# Email needs no service locally: with MAIL_MODE=log the API writes every email to its log.
+name: crm
+
+services:
+  # PostgreSQL 16. Optional: skip it when PostgreSQL is already installed and listening on 5432.
+  postgres:
+    image: postgres:16
+    profiles: [db]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crm_dev
+    ports: ['5432:5432']
+    volumes: [postgres:/var/lib/postgresql/data]
+
+  # File storage standing in for Amazon S3 (S3_ENDPOINT=http://localhost:9000, bucket crm-local).
+  # It accepts any access key, allows browser uploads from localhost:3000 and keeps files across restarts.
+  s3:
+    image: adobe/s3mock:4.2.0
+    environment:
+      initialBuckets: crm-local
+      root: /data
+      retainFilesOnExit: 'true'
+    ports: ['9000:9090']
+    volumes: [s3:/data]
+
+  # PDF maker for invoices and purchase orders (GOTENBERG_URL=http://localhost:3001).
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports: ['3001:3000']
+
+volumes:
+  postgres:
+  s3:

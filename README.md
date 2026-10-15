@@ -69,7 +69,7 @@ Windows, from the `db` folder, with PostgreSQL 16 installed:
 
 Creates database `crm_dev` with all 80 tables, sample data, and runs the 51 rule tests. See `db/README.md`.
 
-## Run the full app on your computer (once the code exists)
+## Run the full app on your computer
 
 ### 1. Install once
 
@@ -77,44 +77,60 @@ Creates database `crm_dev` with all 80 tables, sample data, and runs the 51 rule
 |---|---|
 | Git | latest |
 | Node.js | 22 LTS |
-| pnpm | 9 (`corepack enable`) |
-| Docker Desktop | latest (runs PostgreSQL, MinIO, Mailpit, Gotenberg locally) |
-| VS Code | latest, with the recommended extensions in `.vscode/extensions.json` |
+| pnpm | 9 (`corepack enable`; on Windows also `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once) |
+| PostgreSQL | 16, with Command Line Tools (or use the `db` profile of `docker/docker-compose.yml`) |
+| Docker Desktop | latest (runs the S3 stand-in for files and Gotenberg for PDFs) |
+| VS Code | latest |
 
-### 2. Get the code and start
+### 2. First time
 
-```bash
-git clone https://github.com/priyadarshanT/RealEstateCRM.git
-cd RealEstateCRM
-cp .env.example .env            # local settings; no real secrets needed
+Windows PowerShell, from the repository folder:
+
+```powershell
 pnpm install
-docker compose -f docker/docker-compose.yml up -d   # postgres:5432, minio:9000, mailpit:8025, gotenberg:3001
-pnpm db:migrate                 # creates all tables
-pnpm db:seed                    # reference data + a demo tenant with sample users and leads
-pnpm dev                        # web http://localhost:3000 · api http://localhost:4000 · worker
+docker compose -f docker/docker-compose.yml up -d       # files on :9000, PDFs on :3001
+cd db; .\setup_db.ps1 -Password YOUR_POSTGRES_PASSWORD -Sample; cd ..   # crm_dev with sample data
+copy apps\api\.env.example apps\api\.env           # then set the passwords and the two secrets
+copy apps\web\.env.example apps\web\.env.local     # DEV_AUTH_SECRET = the same value as in apps/api/.env
+pnpm db:migrate                                         # "database is up to date" after setup_db
 ```
 
-Open `http://localhost:3000` and sign in as a demo user (listed in `db/seed/README.md`). Locally, login uses a development identity provider so no AWS account is needed.
+The API connects as `crm_app`, `crm_worker` and `crm_platform`. Give them the password you put in `apps/api/.env` (pgAdmin → crm_dev → Query Tool):
 
-### 3. Everyday commands
+```sql
+ALTER ROLE crm_app PASSWORD '...'; ALTER ROLE crm_worker PASSWORD '...'; ALTER ROLE crm_platform PASSWORD '...';
+```
+
+### 3. Start (three terminals)
+
+```powershell
+pnpm dev                                   # API    http://localhost:4000
+pnpm --filter @crm/api dev:worker          # worker (background jobs and schedules)
+pnpm --filter @crm/web dev                 # screens http://localhost:3000
+```
+
+Open `http://localhost:3000` and sign in with company ID `aaaaaaaa-0000-0000-0000-000000000001` and `admin@a.ae` (Admin), `sara@a.ae` (Team Leader) or `ali@a.ae` (Agent). Locally, login is a development stand-in for Cognito, so no AWS account is needed. Emails are written to the API terminal (`MAIL_MODE=log`).
+
+To try every role, the Admin adds users on **Team → Add user**; they become active at their first sign-in. The sample company has 4 seats, all used, and seats are bought through Stripe, so locally raise them first: `UPDATE subscriptions SET seats = 20;`
+
+Sign-up and billing need Stripe test keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` in `apps/api/.env`).
+
+### Everyday commands
 
 | Command | Does |
 |---|---|
-| `pnpm dev` | Runs web, API and worker with live reload |
-| `pnpm test` | Unit tests for all modules |
-| `pnpm test:e2e` | Browser tests (Playwright) |
+| `pnpm dev` | Runs the API with live reload |
+| `pnpm --filter @crm/api dev:worker` | Runs the worker with live reload |
+| `pnpm --filter @crm/web dev` | Runs the screens with live reload |
+| `pnpm test` | API tests (they build their own database, `crm_test`) |
 | `pnpm test:db` | Database rule tests |
-| `pnpm lint` | Lint, formatting and module-boundary checks |
 | `pnpm typecheck` | TypeScript checks |
 | `pnpm db:migrate` | Apply new migrations |
-| `pnpm db:new <name>` | Create a new numbered migration file |
-| `pnpm db:reset` | Drop and rebuild the local database with seed data |
-| `pnpm api:generate` | Regenerate `packages/contracts` from `api/openapi.yaml` |
-| `pnpm api:check` | Fail if the code's Swagger output differs from `api/openapi.yaml` |
+| `pnpm api:check` | Fail if the code differs from `api/openapi.yaml` |
 
-### 4. Environment variables
+### Environment variables
 
-All variables are listed with explanations in `.env.example`. Real values for staging and production live in AWS SSM Parameter Store, never in the repository.
+All variables are listed with explanations in `apps/api/.env.example` and `apps/web/.env.example`. Real values for staging and production live in AWS SSM Parameter Store, never in the repository.
 
 ## How to add or change code
 

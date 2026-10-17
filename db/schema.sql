@@ -313,21 +313,40 @@ CREATE TABLE integration_sync_runs (
 
 -- ======================= LEAD CONFIGURATION =========================
 
---- table lead_stages | Lead settings | Configurable lead stages. category drives rules: open, won, lost, invalid.
+--- table lead_stages | Lead settings | The four fixed lead statuses Hot, Warm, Cold, Sale Done (migration 0006). category drives rules: open, won, lost.
 CREATE TABLE lead_stages (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Stage ID
   tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
   key             text NOT NULL CHECK (key ~ '^[a-z_]+$'),         -- Stable key, e.g. no_response
   name            text NOT NULL,                                   -- Display name
   category        text NOT NULL CHECK (category IN ('open','won','lost','invalid')), -- Open or terminal category
-  sort_order      smallint NOT NULL,                               -- Order in the stage bar
-  is_system       boolean NOT NULL DEFAULT false,                  -- Built-in stage used by automation (cannot be deleted)
+  sort_order      smallint NOT NULL,                               -- Order in the status bar
+  is_system       boolean NOT NULL DEFAULT false,                  -- Built-in status used by automation (cannot be deleted)
   is_active       boolean NOT NULL DEFAULT true,                   -- Active flag
+  color           text NOT NULL DEFAULT '#64748b' CHECK (color ~ '^#[0-9a-fA-F]{6}$'), -- Badge colour
+  description     text,                                            -- Shown in Manage Status
+  requires_scheduling boolean NOT NULL DEFAULT false,              -- Moving a lead here needs a date and time
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
   updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
   UNIQUE (tenant_id, id),
   UNIQUE (tenant_id, id, category),
   UNIQUE (tenant_id, key)
+);
+
+--- table lead_substatuses | Lead settings | Substatuses under the four lead statuses; only the Admin adds, renames, orders or turns them off.
+CREATE TABLE lead_substatuses (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Substatus ID
+  tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
+  stage_id        uuid NOT NULL,                                   -- Parent status (Hot, Warm, Cold, Sale Done)
+  name            text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 100), -- Display name
+  sort_order      smallint NOT NULL,                               -- Order under the status
+  is_active       boolean NOT NULL DEFAULT true,                   -- Active flag (inactive ones stay on old leads)
+  requires_scheduling boolean NOT NULL DEFAULT false,              -- Choosing it needs a date and time
+  created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
+  updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
+  UNIQUE (tenant_id, id),
+  UNIQUE (tenant_id, id, stage_id),
+  FOREIGN KEY (tenant_id, stage_id) REFERENCES lead_stages(tenant_id, id)
 );
 
 --- table reasons | Lead settings | Configurable reasons for Lost, Invalid and reassignment.
@@ -543,7 +562,8 @@ CREATE TABLE leads (
   first_response_at timestamptz,                                   -- Owner's first logged action after assignment
   stage_id        uuid NOT NULL,                                   -- Current stage
   stage_category  text NOT NULL CHECK (stage_category IN ('open','won','lost','invalid')), -- Category of the current stage (kept in step by FK)
-  close_reason_id uuid,                                            -- Reason for Lost / Invalid
+  substatus_id    uuid,                                            -- Substatus under the current status (required for Cold)
+  close_reason_id uuid,                                            -- Reason (leads closed before migration 0006)
   close_note      text,                                            -- Extra detail for Lost / Invalid
   closed_at       timestamptz,                                     -- When the lead reached a terminal stage
   priority        text NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high')), -- Agent-set priority
@@ -564,7 +584,7 @@ CREATE TABLE leads (
   CHECK (phone_primary IS NOT NULL OR email IS NOT NULL),
   CHECK (budget_min IS NULL OR budget_max IS NULL OR budget_max >= budget_min),
   CHECK ((budget_min IS NULL AND budget_max IS NULL) OR budget_currency IS NOT NULL),
-  CHECK (stage_category NOT IN ('lost','invalid') OR close_reason_id IS NOT NULL),
+  CONSTRAINT leads_closed_substatus_check CHECK (stage_category NOT IN ('lost','invalid') OR substatus_id IS NOT NULL),
   CHECK ((stage_category = 'open') = (closed_at IS NULL)),
   CHECK (stage_category <> 'open' OR owner_user_id IS NULL OR next_follow_up_at IS NOT NULL OR deleted_at IS NOT NULL),
   CHECK ((owner_user_id IS NULL) = (assigned_at IS NULL)),
@@ -576,6 +596,7 @@ CREATE TABLE leads (
   FOREIGN KEY (tenant_id, owner_user_id) REFERENCES users(tenant_id, id),
   FOREIGN KEY (tenant_id, team_id) REFERENCES teams(tenant_id, id),
   FOREIGN KEY (tenant_id, stage_id, stage_category) REFERENCES lead_stages(tenant_id, id, category),
+  CONSTRAINT leads_substatus_fk FOREIGN KEY (tenant_id, substatus_id, stage_id) REFERENCES lead_substatuses(tenant_id, id, stage_id),
   FOREIGN KEY (tenant_id, close_reason_id) REFERENCES reasons(tenant_id, id),
   FOREIGN KEY (tenant_id, deleted_by) REFERENCES users(tenant_id, id),
   FOREIGN KEY (tenant_id, created_by) REFERENCES users(tenant_id, id)
@@ -632,6 +653,7 @@ CREATE TABLE lead_stage_history (
   lead_id         uuid NOT NULL,                                   -- Lead
   from_stage_id   uuid,                                            -- Previous stage (empty for the first stage)
   to_stage_id     uuid NOT NULL,                                   -- New stage
+  to_substatus_id uuid,                                            -- Substatus chosen with the change
   reason_id       uuid,                                            -- Reason (required for Lost / Invalid)
   note            text,                                            -- Comment
   is_automatic    boolean NOT NULL DEFAULT false,                  -- Changed by automation (auto-close, reopen, booking)
@@ -640,6 +662,7 @@ CREATE TABLE lead_stage_history (
   FOREIGN KEY (tenant_id, lead_id) REFERENCES leads(tenant_id, id),
   FOREIGN KEY (tenant_id, from_stage_id) REFERENCES lead_stages(tenant_id, id),
   FOREIGN KEY (tenant_id, to_stage_id) REFERENCES lead_stages(tenant_id, id),
+  CONSTRAINT lead_stage_history_substatus_fk FOREIGN KEY (tenant_id, to_substatus_id) REFERENCES lead_substatuses(tenant_id, id),
   FOREIGN KEY (tenant_id, reason_id) REFERENCES reasons(tenant_id, id),
   FOREIGN KEY (tenant_id, changed_by) REFERENCES users(tenant_id, id)
 );
@@ -1721,6 +1744,8 @@ CREATE INDEX leads_re_enquiry_idx ON leads (tenant_id, last_enquiry_at DESC) WHE
 CREATE INDEX lead_inquiries_lead_idx ON lead_inquiries (tenant_id, lead_id, submitted_at DESC);
 CREATE INDEX lead_inquiries_campaign_idx ON lead_inquiries (tenant_id, campaign_id, submitted_at);
 CREATE INDEX lead_projects_project_idx ON lead_projects (tenant_id, project_id);
+CREATE UNIQUE INDEX lead_substatuses_name_uq ON lead_substatuses (tenant_id, stage_id, lower(name));
+CREATE INDEX lead_substatuses_stage_idx ON lead_substatuses (tenant_id, stage_id, sort_order);
 CREATE INDEX lead_stage_history_lead_idx ON lead_stage_history (tenant_id, lead_id, changed_at);
 CREATE INDEX lead_stage_history_to_idx ON lead_stage_history (tenant_id, to_stage_id, changed_at);
 CREATE INDEX lead_assignments_lead_idx ON lead_assignments (tenant_id, lead_id, changed_at);

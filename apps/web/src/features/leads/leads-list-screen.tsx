@@ -24,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { presetRange } from '@/core/date-range';
 import { formatDate, formatRelativeDay, initials } from '@/core/format';
-import { byId, useCampaigns, useColleagues, useProjectList, useSources, useStages } from '@/core/lookups';
+import { byId, useCampaigns, useColleagues, useProjectList, useSources, useStages, useSubstatuses } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from '@/features/reports/export-button';
 import { BulkBar } from './bulk-bar';
@@ -106,6 +106,7 @@ export function LeadsListScreen() {
   }, [list.data, list.isPlaceholderData, cursor]);
 
   const stages = byId(useStages().data);
+  const substatuses = byId(useSubstatuses().data);
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
   const projects = byId(useProjectList().data);
@@ -160,7 +161,7 @@ export function LeadsListScreen() {
       case 'score':
         return <ScoreBadge score={lead.score} />;
       case 'stage':
-        return <StageBadge stage={stages.get(lead.stageId)} />;
+        return <StageBadge stage={stages.get(lead.stageId)} substatus={lead.substatusId ? substatuses.get(lead.substatusId)?.name : undefined} />;
       case 'latestNote':
         return <span className="line-clamp-2 max-w-56 text-xs">{lead.latestNote ?? '—'}</span>;
       case 'nextFollowUp': {

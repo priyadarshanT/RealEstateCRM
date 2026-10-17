@@ -49,7 +49,32 @@ INSERT INTO platform_settings (key, value) VALUES
  ('signup.verification','{"brokerage":["trade_license_no","rera_orn"],"individual":["rera_brn"]}')
 ON CONFLICT (key) DO NOTHING;
 
--- Creates the default roles, permissions, stages and reasons for a new tenant
+-- The four fixed lead statuses and their default substatuses (stakeholder update 2026-10-17). Safe to run again.
+CREATE OR REPLACE FUNCTION seed_lead_statuses(p_tenant uuid) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM set_config('app.tenant_id', p_tenant::text, true);
+  INSERT INTO lead_stages (tenant_id, key, name, category, sort_order, is_system, color, description, requires_scheduling) VALUES
+   (p_tenant,'hot','Hot','open',1,true,'#e11d48','Ready to buy soon: calls, Zoom and viewings scheduled',true),
+   (p_tenant,'warm','Warm','open',2,true,'#f59e0b','Interested, being followed up',true),
+   (p_tenant,'cold','Cold','lost',3,true,'#0284c7','Not interested, not reachable or not genuine',false),
+   (p_tenant,'sale_done','Sale Done','won',4,true,'#059669','Purchase completed',false)
+  ON CONFLICT (tenant_id, key) DO UPDATE SET name = EXCLUDED.name, sort_order = EXCLUDED.sort_order, is_system = true, is_active = true,
+    color = EXCLUDED.color, description = EXCLUDED.description, requires_scheduling = EXCLUDED.requires_scheduling;
+  INSERT INTO lead_substatuses (tenant_id, stage_id, name, sort_order, requires_scheduling)
+  SELECT p_tenant, s.id, v.name, v.ord, v.sched
+  FROM (VALUES
+    ('hot','Zoom Schedule',1,true),('hot','Event Attended',2,false),('hot','Zoom Done',3,false),('hot','Viewing Schedule',4,true),
+    ('hot','Potential Buyer',5,false),('hot','Immediate Buyer',6,false),
+    ('warm','Channel Partner',1,false),('warm','Attend Event',2,true),('warm','Future Interested',3,false),('warm','Interested',4,false),
+    ('warm','No Response / Call Back',5,true),
+    ('cold','Fake',1,false),('cold','Not Interested',2,false),('cold','Invalid / Out of Service',3,false),('cold','Time Mismatch',4,false),
+    ('cold','Language Barrier',5,false),('cold','No Response',6,false),('cold','Declined / Busy',7,false)
+  ) AS v(stage_key, name, ord, sched)
+  JOIN lead_stages s ON s.tenant_id = p_tenant AND s.key = v.stage_key
+  WHERE NOT EXISTS (SELECT 1 FROM lead_substatuses x WHERE x.tenant_id = p_tenant AND x.stage_id = s.id AND lower(x.name) = lower(v.name));
+END $$;
+
+-- Creates the default roles, permissions, lead statuses and reasons for a new tenant
 CREATE OR REPLACE FUNCTION create_tenant_defaults(p_tenant uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config('app.tenant_id', p_tenant::text, true);
@@ -74,17 +99,10 @@ BEGIN
   ) AS g(role_key, perm) ON g.role_key = r.key JOIN permissions p ON p.key = g.perm
   WHERE r.tenant_id = p_tenant;
 
-  INSERT INTO lead_stages (tenant_id, key, name, category, sort_order, is_system) VALUES
-   (p_tenant,'new','New','open',1,true),(p_tenant,'pending','Pending','open',2,true),(p_tenant,'attempted','Attempted','open',3,true),
-   (p_tenant,'no_response','No Response','open',4,true),(p_tenant,'follow_up','Follow-up','open',5,true),(p_tenant,'warm','Warm','open',6,false),
-   (p_tenant,'hot','Hot','open',7,false),(p_tenant,'qualified','Qualified','open',8,true),(p_tenant,'meeting_scheduled','Meeting Scheduled','open',9,true),
-   (p_tenant,'viewing_scheduled','Viewing Scheduled','open',10,true),(p_tenant,'eoi_submitted','EOI Submitted','open',11,true),(p_tenant,'booked','Booked','open',12,true),
-   (p_tenant,'won','Won','won',13,true),(p_tenant,'lost','Lost','lost',14,true),(p_tenant,'invalid','Invalid','invalid',15,true);
+  PERFORM seed_lead_statuses(p_tenant);
 
   INSERT INTO reasons (tenant_id, type, key, name) VALUES
-   (p_tenant,'lost',NULL,'Budget too low'),(p_tenant,'lost',NULL,'Bought elsewhere'),
-   (p_tenant,'lost',NULL,'Not interested'),(p_tenant,'invalid',NULL,'Wrong number'),(p_tenant,'invalid',NULL,'Fake / spam'),
-   (p_tenant,'invalid',NULL,'Agent / broker'),(p_tenant,'reassignment',NULL,'Agent unavailable'),(p_tenant,'reassignment',NULL,'Language match'),
+   (p_tenant,'reassignment',NULL,'Agent unavailable'),(p_tenant,'reassignment',NULL,'Language match'),
    (p_tenant,'reassignment','no_response','No response from agent'),(p_tenant,'reassignment','admin_fallback','Whole team did not respond');
 
   INSERT INTO lead_sources (tenant_id, type, name, quality_score) VALUES

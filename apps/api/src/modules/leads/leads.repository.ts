@@ -149,7 +149,7 @@ export class LeadsRepository {
     return rows.map((r) => r.id!);
   }
 
-  async insertStageHistory(values: { leadId: string; fromStageId: string | null; toStageId: string; reasonId?: string | null; note?: string | null; isAutomatic?: boolean; changedBy?: string | null }): Promise<void> {
+  async insertStageHistory(values: { leadId: string; fromStageId: string | null; toStageId: string; toSubstatusId?: string | null; reasonId?: string | null; note?: string | null; isAutomatic?: boolean; changedBy?: string | null }): Promise<void> {
     await this.db.current.insert(leadStageHistory).values({ ...values, tenantId: this.tenantId });
   }
 

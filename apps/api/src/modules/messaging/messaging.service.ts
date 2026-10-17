@@ -63,6 +63,9 @@ export class MessagingService implements OnModuleInit {
   // ---------------------------------------------------------------- sending
   async send(p: Principal, leadId: string, body: MessageSendDto): Promise<MessageDto> {
     const { lead } = await this.leads.editable(p, leadId);
+    if (!lead.ownerUserId && !(await this.leads.features()).unassigned_communication) {
+      throw new ProblemException(403, 'UNASSIGNED_LEAD', 'Lead not assigned', 'Messages to unassigned leads are turned off in Global Configuration › Leads. Assign the lead first.');
+    }
     const address = body.channel === 'whatsapp' ? lead.phonePrimary : lead.email;
     if (!address) throw Problems.validation([{ field: 'channel', message: body.channel === 'whatsapp' ? 'the lead has no phone number' : 'the lead has no email address' }]);
     if (await this.optedOut(leadId, body.channel)) {

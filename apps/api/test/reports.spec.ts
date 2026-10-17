@@ -25,14 +25,14 @@ describe('dashboard, reports, exports', () => {
     campaignId = (await admin.post('/api/v1/campaigns').send({ sourceId, name: 'Reports campaign' }).expect(201)).body.id;
     await admin.put(`/api/v1/campaigns/${campaignId}/spend`).send({ days: [{ spendDate: today, amount: '300.00', currency: 'AED' }] }).expect(204);
     stage = Object.fromEntries((await admin.get('/api/v1/lead-stages?limit=200').expect(200)).body.data.map((s: { key: string; id: string }) => [s.key, s.id]));
-    reason = Object.fromEntries((await admin.get('/api/v1/reasons?type=lost').expect(200)).body.data.map((r: { name: string; id: string }) => [r.name, r.id]));
+    reason = Object.fromEntries((await admin.get('/api/v1/lead-substatuses').expect(200)).body.data.map((r: { name: string; id: string }) => [r.name, r.id]));
 
-    // 3 leads from the campaign: one qualified, one lost, one new.
+    // 3 leads from the campaign: one Hot, one Cold, one still Warm.
     const make = async (n: number) =>
       (await admin.post('/api/v1/leads').send({ fullName: `Report Lead ${n}`, phonePrimary: `+9715577000${n}0`, sourceId, campaignId, ownerUserId: USERS.adminB.id }).expect(201)).body;
     const [a, b] = [await make(1), await make(2), await make(3)];
-    await admin.post(`/api/v1/leads/${a.id}/stage`).send({ stageId: stage.qualified, nextFollowUpAt: '2030-01-01T00:00:00Z' }).expect(200);
-    await admin.post(`/api/v1/leads/${b.id}/stage`).send({ stageId: stage.lost, reasonId: reason['Not interested'] }).expect(200);
+    await admin.post(`/api/v1/leads/${a.id}/stage`).send({ stageId: stage.hot, nextFollowUpAt: '2030-01-01T00:00:00Z' }).expect(200);
+    await admin.post(`/api/v1/leads/${b.id}/stage`).send({ stageId: stage.cold, substatusId: reason['Not Interested'] }).expect(200);
   });
 
   afterAll(async () => {
@@ -41,18 +41,14 @@ describe('dashboard, reports, exports', () => {
 
   it('dashboard: cards, buckets with drill-down filters, funnel and trend', async () => {
     const res = await admin.get(`/api/v1/dashboard?sourceId=${sourceId}&from=${today}&to=${today}`).expect(200);
-    expect(res.body.kpis).toMatchObject({ total: 3, new: 1, qualified: 1, salesValue: '0.00', unpaidInvoices: '0.00' });
+    expect(res.body.kpis).toMatchObject({ total: 3, new: 1, qualified: 1, eois: 0, bookings: 0, salesValue: '0.00', unpaidInvoices: '0.00' });
     expect(res.body.bySource).toEqual([{ key: sourceId, label: 'Reports source', count: 3, drillDown: { createdFrom: today, createdTo: today, sourceId } }]);
     expect(res.body.byCampaign[0]).toMatchObject({ key: campaignId, label: 'Reports campaign', count: 3 });
-    const lostBucket = res.body.byStage.find((b: { key: string }) => b.key === stage.lost);
-    expect(lostBucket).toMatchObject({ label: 'Lost', count: 1, drillDown: { stageId: stage.lost, sourceId } });
+    const lostBucket = res.body.byStage.find((b: { key: string }) => b.key === stage.cold);
+    expect(lostBucket).toMatchObject({ label: 'Cold', count: 1, drillDown: { stageId: stage.cold, sourceId } });
     expect(res.body.funnel.map((s: { key: string; count: number }) => [s.key, s.count])).toEqual([
       ['lead', 3],
-      ['contacted', 1],
-      ['qualified', 1],
-      ['meeting', 0],
-      ['eoi', 0],
-      ['booking', 0],
+      ['hot', 1],
       ['sale', 0],
     ]);
     expect(res.body.trend).toEqual([{ date: today, leads: 3, qualified: 1, spend: '300.00', sales: '0.00' }]);
@@ -82,19 +78,24 @@ describe('dashboard, reports, exports', () => {
     expect(page2.body.rows).toHaveLength(1);
 
     const lost = await admin.get(`/api/v1/reports/leads_lost?sourceId=${sourceId}`).expect(200);
-    expect(lost.body.rows).toEqual([expect.objectContaining({ stage: 'Lost', reason: 'Not interested' })]);
+    expect(lost.body.rows).toEqual([expect.objectContaining({ stage: 'Cold', substatus: 'Not Interested' })]);
 
     const marketing = await admin.get(`/api/v1/reports/marketing?campaignId=${campaignId}&from=${today}&to=${today}`).expect(200);
     expect(marketing.body.rows).toEqual([
       { campaignId, campaign: 'Reports campaign', leads: 3, qualified: 1, spend: '300.00', costPerLead: '100.00', costPerQualified: '300.00' },
     ]);
     const funnel = await admin.get(`/api/v1/reports/funnel?sourceId=${sourceId}`).expect(200);
-    expect(funnel.body.rows[2]).toMatchObject({ step: 'Qualified', leads: 1, conversion: 100 });
+    expect(funnel.body.rows[1]).toMatchObject({ step: 'Hot', leads: 1, conversion: 33.3 });
     await admin.get('/api/v1/reports/no_such_report').expect(404);
   });
 
   it('exports: Admin only, run in the background, totals match the screen, logged', async () => {
     await agentA.post('/api/v1/reports/leads/exports').send({ format: 'csv' }).expect(403);
+    // Lead exports start off (Global Configuration › Leads › Export Leads); the Admin turns them on.
+    const off = await admin.post('/api/v1/reports/leads/exports').send({ format: 'csv', filters: { sourceId } }).expect(403);
+    expect(off.body.code).toBe('EXPORT_DISABLED');
+    const features = (await admin.get('/api/v1/settings/leads.features').expect(200)).body.value;
+    await admin.put('/api/v1/settings/leads.features').send({ value: { ...features, export_leads: true } }).expect(200);
     await admin.post('/api/v1/reports/leads/exports').send({ format: 'csv', filters: { password: 'x' } }).expect(400);
 
     const csv = await admin.post('/api/v1/reports/leads/exports').send({ format: 'csv', filters: { sourceId } }).expect(202);

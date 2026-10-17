@@ -1,3 +1,5 @@
+import { LeadDto } from './dto/lead.dto';
+import { LeadsService, maskContact } from './leads.service';
 import { Injectable } from '@nestjs/common';
 import { and, eq, gte, inArray, isNotNull, isNull, lt, sql, SQL } from 'drizzle-orm';
 import { Principal } from '../../core/auth/principal';
@@ -24,16 +26,16 @@ export interface Bucket {
   count: number;
 }
 
-/** Funnel steps (SRS §10.3) and the stage keys that mean a lead reached each step. */
+/**
+ * Funnel steps and the status keys that mean a lead reached each step. Every lead starts as Warm, so the steps are
+ * all leads → Hot (qualified) → Sale Done (stakeholder update 2026-10-17: four statuses replace the stages).
+ */
 export const FUNNEL: { key: string; label: string; stages: string[] }[] = [
-  { key: 'lead', label: 'Lead', stages: [] },
-  { key: 'contacted', label: 'Contacted', stages: ['follow_up', 'warm', 'hot', 'qualified', 'meeting_scheduled', 'viewing_scheduled', 'eoi_submitted', 'booked', 'won'] },
-  { key: 'qualified', label: 'Qualified', stages: ['qualified', 'meeting_scheduled', 'viewing_scheduled', 'eoi_submitted', 'booked', 'won'] },
-  { key: 'meeting', label: 'Meeting', stages: ['meeting_scheduled', 'viewing_scheduled', 'eoi_submitted', 'booked', 'won'] },
-  { key: 'eoi', label: 'EOI', stages: ['eoi_submitted', 'booked', 'won'] },
-  { key: 'booking', label: 'Booking', stages: ['booked', 'won'] },
-  { key: 'sale', label: 'Sale', stages: ['won'] },
+  { key: 'lead', label: 'All leads', stages: [] },
+  { key: 'hot', label: 'Hot', stages: ['hot', 'sale_done'] },
+  { key: 'sale', label: 'Sale Done', stages: ['sale_done'] },
 ];
+const HOT = FUNNEL[1]!.stages;
 
 /**
  * Lead figures for the dashboard and reports. They read the leads tables here, inside the leads module, and are
@@ -45,6 +47,7 @@ export class LeadReportingService {
     private readonly db: DbService,
     private readonly scope: LeadScope,
     private readonly config: LeadConfigService,
+    private readonly leadsService: LeadsService,
   ) {}
 
   /** Leads in scope, not deleted, matching the filters; `createdInPeriod` limits to leads created between from and to. */
@@ -80,19 +83,16 @@ export class LeadReportingService {
   async kpis(p: Principal, f: ReportFilters) {
     const inPeriod = await this.where(p, f);
     const current = await this.where(p, f, false);
-    const [newStage] = await this.stageIds(['new']);
-    const [qualified, eoi, booked] = await Promise.all([this.stageIds(FUNNEL[2]!.stages), this.stageIds(['eoi_submitted']), this.stageIds(['booked'])]);
+    const [[warm], qualified] = await Promise.all([this.stageIds(['warm']), this.stageIds(HOT)]);
     const now = new Date();
     const [row] = await this.db.current
       .select({
         total: sql<number>`count(*) FILTER (WHERE ${inPeriod ?? sql`true`})::int`,
-        new: sql<number>`count(*) FILTER (WHERE ${leads.stageId} = ${newStage ?? null})::int`,
+        new: sql<number>`count(*) FILTER (WHERE ${leads.stageId} = ${warm ?? null} AND ${leads.substatusId} IS NULL)::int`,
         untouched: sql<number>`count(*) FILTER (WHERE ${leads.stageCategory} = 'open' AND ${leads.ownerUserId} IS NOT NULL AND ${leads.firstResponseAt} IS NULL AND ${leads.lastActivityAt} IS NULL)::int`,
         overdue: sql<number>`count(*) FILTER (WHERE ${leads.stageCategory} = 'open' AND ${leads.ownerUserId} IS NOT NULL AND ${leads.nextFollowUpAt} < ${now})::int`,
         reEnquired: sql<number>`count(*) FILTER (WHERE ${leads.enquiryCount} > 1${f.from ? sql` AND ${leads.lastEnquiryAt} >= ${dayStart(f.from)}` : sql``}${f.to ? sql` AND ${leads.lastEnquiryAt} < ${dayAfter(f.to)}` : sql``})::int`,
         qualified: sql<number>`count(*) FILTER (WHERE ${this.reached(qualified, f)})::int`,
-        eois: sql<number>`count(*) FILTER (WHERE ${this.reached(eoi, f)})::int`,
-        bookings: sql<number>`count(*) FILTER (WHERE ${this.reached(booked, f)})::int`,
       })
       .from(leads)
       .where(current);
@@ -134,7 +134,7 @@ export class LeadReportingService {
   /** Leads and qualified leads per day (dashboard line chart). */
   async trend(p: Principal, f: ReportFilters): Promise<{ date: string; leads: number; qualified: number }[]> {
     const where = await this.where(p, f);
-    const qualified = await this.stageIds(FUNNEL[2]!.stages);
+    const qualified = await this.stageIds(HOT);
     const rows = await this.db.current
       .select({
         date: sql<string>`to_char(date_trunc('day', ${leads.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
@@ -163,6 +163,7 @@ export class LeadReportingService {
         ownerUserId: leads.ownerUserId,
         stageId: leads.stageId,
         stageCategory: leads.stageCategory,
+        substatusId: leads.substatusId,
         closeReasonId: leads.closeReasonId,
         priority: leads.priority,
         score: leads.score,
@@ -177,7 +178,12 @@ export class LeadReportingService {
       .limit(limit)
       .offset(offset);
     const [count] = await this.db.current.select({ n: sql<number>`count(*)::int` }).from(leads).where(where);
-    return { rows, total: count?.n ?? 0 };
+    if (!(await this.leadsService.hidesContact())) return { rows, total: count?.n ?? 0 };
+    const masked = rows.map((r) => {
+      const m = maskContact({ phonePrimary: r.phonePrimary ?? undefined, email: r.email ?? undefined } as LeadDto, true);
+      return { ...r, phonePrimary: m.phonePrimary ?? null, email: m.email ?? null };
+    });
+    return { rows: masked, total: count?.n ?? 0 };
   }
 
   /** Conditions for the lead list reports (SRS §8.2). */
@@ -185,8 +191,11 @@ export class LeadReportingService {
     const now = new Date();
     switch (kind) {
       case 'new':
+        // Warm leads nobody has given a substatus yet.
+        return and(eq(leads.stageId, (await this.stageIds(['warm']))[0] ?? '00000000-0000-0000-0000-000000000000'), isNull(leads.substatusId));
       case 'pending':
-        return eq(leads.stageId, (await this.stageIds([kind]))[0] ?? '00000000-0000-0000-0000-000000000000');
+        // Assigned, still waiting for the agent's first action.
+        return and(eq(leads.stageCategory, 'open'), isNotNull(leads.ownerUserId), isNull(leads.firstResponseAt));
       case 'scheduled':
         return and(eq(leads.stageCategory, 'open'), gte(leads.nextFollowUpAt, now));
       case 'overdue':
@@ -205,7 +214,8 @@ export class LeadReportingService {
   /** Per agent (SRS §8.4): leads owned, contacted, qualified, won, average response minutes, leads missed (10-minute rule). */
   async agentPerformance(p: Principal, f: ReportFilters) {
     const where = await this.where(p, f);
-    const [contacted, qualified, won] = await Promise.all([this.stageIds(FUNNEL[1]!.stages), this.stageIds(FUNNEL[2]!.stages), this.stageIds(['won'])]);
+    const [qualified, won] = await Promise.all([this.stageIds(HOT), this.stageIds(['sale_done'])]);
+    const contacted = qualified;
     const rows = await this.db.current
       .select({
         userId: leads.ownerUserId,
@@ -236,9 +246,9 @@ export class LeadReportingService {
   /** Leads and qualified leads per campaign or event (marketing and event reports). */
   async byCampaignOrEvent(p: Principal, f: ReportFilters, by: 'campaign' | 'event') {
     const where = await this.where(p, f);
-    const qualified = await this.stageIds(FUNNEL[2]!.stages);
-    const booked = await this.stageIds(['booked', 'won']);
-    const meeting = await this.stageIds(FUNNEL[3]!.stages);
+    const qualified = await this.stageIds(HOT);
+    const booked = await this.stageIds(['sale_done']);
+    const meeting = qualified;
     const column = by === 'campaign' ? leads.campaignId : leads.eventId;
     return this.db.current
       .select({

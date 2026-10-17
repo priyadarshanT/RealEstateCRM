@@ -8,6 +8,7 @@ import { Problems } from '../../core/errors/problem';
 import { pgCode, PG_FOREIGN_KEY_VIOLATION } from '../../core/errors/pg';
 import { EventBus } from '../../core/events/domain-events';
 import { decodeCursor, encodeCursor } from '../../core/http/pagination';
+import { RequestContext } from '../../core/http/request-context';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { LeadConfigService } from '../settings/lead-config.service';
 import { SettingsService } from '../settings/settings.service';
@@ -103,7 +104,30 @@ export class LeadsService {
   }
 
   async toDto(lead: LeadRow, access?: LeadAccess): Promise<LeadDto> {
-    return LeadDto.from(lead, (await this.repo.projectsOf([lead.id])).get(lead.id), access);
+    const hide = await this.hidesContact();
+    return maskContact(LeadDto.from(lead, (await this.repo.projectsOf([lead.id])).get(lead.id), access), hide);
+  }
+
+  // =================================================================== Global Configuration › Leads switches
+  /** The lead feature switches of this company (export, source update, past dates, hidden contact info …). */
+  async features() {
+    return this.settings.get('leads.features');
+  }
+
+  /** True when the signed-in user's role must not see lead phone numbers and emails (enforced in every response). */
+  async hidesContact(): Promise<boolean> {
+    const role = RequestContext.get().principal?.roleKey;
+    if (!role) return false;
+    const { hide_contact_info: hide } = await this.features();
+    return hide.enabled && hide.role_keys.includes(role);
+  }
+
+  /** Follow-up dates in the past are refused unless Enable Past Date Selection is on (5 minutes of grace). */
+  async assertDateAllowed(iso: string, field: string): Promise<void> {
+    if (Date.parse(iso) >= Date.now() - 5 * 60_000) return;
+    if (!(await this.features()).past_date_selection) {
+      throw Problems.validation([{ field, message: 'past dates are turned off (Global Configuration › Leads)' }]);
+    }
   }
 
   async list(p: Principal, query: LeadListQuery): Promise<LeadPage> {
@@ -114,8 +138,9 @@ export class LeadsService {
     const kept = rows.slice(0, query.limit);
     const [access, projects] = await Promise.all([this.scope.accessFor(p, kept), this.repo.projectsOf(kept.map((r) => r.id))]);
     const hasMore = rows.length > query.limit;
+    const hide = await this.hidesContact();
     return {
-      data: kept.map((l) => LeadDto.from(l, projects.get(l.id), access.get(l.id))),
+      data: kept.map((l) => maskContact(LeadDto.from(l, projects.get(l.id), access.get(l.id)), hide)),
       page: {
         nextCursor: hasMore ? encodeCursor([offset + query.limit]) : null,
         hasMore,
@@ -147,8 +172,12 @@ export class LeadsService {
     if (body.primaryProjectId && !body.projectIds?.includes(body.primaryProjectId)) {
       throw Problems.validation([{ field: 'primaryProjectId', message: 'must be one of projectIds' }]);
     }
+    if (!body.countryCode && (await this.features()).mandatory_location) {
+      throw Problems.validation([{ field: 'countryCode', message: 'location is required (Global Configuration › Leads)' }]);
+    }
 
-    const stage = await this.stageByKey('new');
+    // Every new lead starts as Warm (stakeholder decision 2026-10-17).
+    const stage = await this.stageByKey('warm');
     const lead = await this.repo
       .insert({
         ...pickFields(body),
@@ -193,7 +222,17 @@ export class LeadsService {
 
     const patch: LeadPatch = {};
     for (const key of EDITABLE) if (body[key] !== undefined) (patch as Record<string, unknown>)[key] = body[key];
-    if (body.nextFollowUpAt !== undefined) patch.nextFollowUpAt = new Date(body.nextFollowUpAt);
+    if (body.nextFollowUpAt !== undefined) {
+      await this.assertDateAllowed(body.nextFollowUpAt, 'nextFollowUpAt');
+      patch.nextFollowUpAt = new Date(body.nextFollowUpAt);
+    }
+    // Lead Source Update: the current source may change; the original stays on the first enquiry and in the audit log.
+    if (body.sourceId !== undefined && body.sourceId !== lead.sourceId) {
+      if (!(await this.features()).source_update) throw Problems.forbidden('Changing the lead source is turned off (Global Configuration › Leads).');
+      const source = await this.config.getSource(body.sourceId).catch(() => undefined);
+      if (!source || !source.isActive) throw Problems.validation([{ field: 'sourceId', message: 'unknown or inactive lead source' }]);
+      patch.sourceId = body.sourceId;
+    }
     const phones = [patch.phonePrimary, patch.phoneAlternate].filter((v): v is string => Boolean(v));
     if (phones.length || patch.email) {
       const clash = await this.repo.findExisting(phones, patch.email ?? null, id);
@@ -453,12 +492,11 @@ export class LeadsService {
       case 'unassigned':
         c.push(isNull(leads.ownerUserId), eq(leads.stageCategory, 'open'));
         break;
-      case 'new':
-      case 'pending':
-        c.push(eq(leads.stageId, (await this.stageByKey(tab)).id));
-        break;
+      case 'hot':
+      case 'warm':
       case 'cold':
-        c.push(eq(leads.stageId, (await this.stageByKey('no_response')).id));
+      case 'sale_done':
+        c.push(eq(leads.stageId, (await this.stageByKey(tab)).id));
         break;
       case 'scheduled':
         c.push(eq(leads.stageCategory, 'open'), gte(leads.nextFollowUpAt, now));
@@ -480,6 +518,7 @@ export class LeadsService {
       );
     }
     if (f.stageId) c.push(eq(leads.stageId, f.stageId));
+    if (f.substatusId) c.push(eq(leads.substatusId, f.substatusId));
     if (f.ownerUserId) c.push(eq(leads.ownerUserId, f.ownerUserId));
     if (f.teamId) c.push(eq(leads.teamId, f.teamId));
     if (f.sourceId) c.push(eq(leads.sourceId, f.sourceId));
@@ -545,7 +584,7 @@ function pickFields(body: Partial<Record<(typeof EDITABLE)[number], unknown>>): 
 function pickAudit(l: LeadRow): Record<string, unknown> {
   const row = l as unknown as Record<string, unknown>;
   return Object.fromEntries(
-    [...EDITABLE, 'nextFollowUpAt'].map((k) => {
+    [...EDITABLE, 'sourceId', 'nextFollowUpAt'].map((k) => {
       const value = row[k];
       return [k, value instanceof Date ? value.toISOString() : value];
     }),
@@ -564,4 +603,20 @@ function validateBudget(b: { budgetMin?: string | null; budgetMax?: string | nul
 function rethrowReference(err: unknown): never {
   if (pgCode(err) === PG_FOREIGN_KEY_VIOLATION) throw Problems.validation([{ field: 'id', message: 'a linked record (campaign, event, project or currency) does not exist' }]);
   throw err;
+}
+
+const hideText = (v: string | undefined, keep: number): string | undefined =>
+  v === undefined ? undefined : v.length <= keep + 2 ? '•'.repeat(v.length) : v.slice(0, keep) + '•'.repeat(Math.max(3, v.length - keep - 2)) + v.slice(-2);
+
+/** Masks phone numbers and email (Hide Lead Contact Info): +971•••••67, a•••@example.com. */
+export function maskContact(dto: LeadDto, hide: boolean): LeadDto {
+  if (!hide) return dto;
+  const [user, domain] = (dto.email ?? '').split('@');
+  return {
+    ...dto,
+    phonePrimary: hideText(dto.phonePrimary, 4),
+    phoneAlternate: hideText(dto.phoneAlternate, 4),
+    email: dto.email ? `${(user ?? '').slice(0, 1)}•••@${domain ?? ''}` : undefined,
+    contactHidden: true,
+  };
 }

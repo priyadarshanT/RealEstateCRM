@@ -1,22 +1,21 @@
 import { Badge, type BadgeProps } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
 
-type Stage = Pick<Schemas['LeadStage'], 'key' | 'name' | 'category'>;
+type Stage = Pick<Schemas['LeadStage'], 'key' | 'name' | 'category'> & { color?: string };
 
-const TONE_BY_KEY: Record<string, BadgeProps['tone']> = {
-  hot: 'danger',
-  warm: 'warning',
-  qualified: 'success',
-  follow_up: 'info',
-  attempted: 'warning',
-  won: 'success',
-  booked: 'success',
-};
-
-export function StageBadge({ stage }: { stage: Stage | undefined }) {
+/** Lead status in its colour (Hot, Warm, Cold, Sale Done), with the substatus when there is one. */
+export function StageBadge({ stage, substatus }: { stage: Stage | undefined; substatus?: string }) {
   if (!stage) return <Badge>—</Badge>;
-  const tone = TONE_BY_KEY[stage.key] ?? (stage.category === 'lost' || stage.category === 'invalid' ? 'neutral' : 'primary');
-  return <Badge tone={tone}>{stage.name}</Badge>;
+  const color = stage.color ?? '#64748b';
+  return (
+    <span className="inline-flex max-w-56 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset" style={{ color, background: `${color}14`, boxShadow: `inset 0 0 0 1px ${color}40` }}>
+      <span className="size-1.5 shrink-0 rounded-full" style={{ background: color }} />
+      <span className="truncate">
+        {stage.name}
+        {substatus ? <span className="font-normal opacity-80"> · {substatus}</span> : null}
+      </span>
+    </span>
+  );
 }
 
 export function ScoreBadge({ score }: { score: number }) {

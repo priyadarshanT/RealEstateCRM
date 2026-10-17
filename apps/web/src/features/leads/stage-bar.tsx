@@ -5,26 +5,37 @@ import type { Schemas } from '@crm/contracts';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
 import { isoToLocalInput, localInputToIso } from '@/core/format';
-import { useReasons, useStages } from '@/core/lookups';
+import { useStages, useSubstatuses } from '@/core/lookups';
+import { useClientPolicy } from '@/features/global-config/policy';
 import { useLeadMutations, type Lead } from './leads-api';
 
 /**
- * Stage bar (wireframe "Lead page"). Lost and Invalid need a reason (SRS §2.21);
- * an open stage asks for the next follow-up date (§2.20).
+ * Status bar (stakeholder update 2026-10-17): Hot, Warm, Cold and Sale Done, each with its substatuses from
+ * Global Configuration › Manage Status. Cold needs a substatus; Hot and Warm ask for the next follow-up, which is
+ * required when the substatus needs scheduling and may not be in the past unless past dates are allowed.
  */
 export function StageBar({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
   const stages = useStages();
+  const substatuses = useSubstatuses();
+  const policy = useClientPolicy();
   const { changeStage } = useLeadMutations(lead.id);
   const [target, setTarget] = useState<Schemas['LeadStage'] | null>(null);
-  const [reasonId, setReasonId] = useState('');
+  const [substatusId, setSubstatusId] = useState('');
   const [note, setNote] = useState('');
   const [next, setNext] = useState('');
-  const reasonType = target?.category === 'lost' ? 'lost' : target?.category === 'invalid' ? 'invalid' : undefined;
-  const reasons = useReasons(reasonType);
 
-  const open = (s: Schemas['LeadStage']) => {
+  const options = (substatuses.data ?? []).filter((x) => x.stageId === target?.id && (x.isActive || x.id === lead.substatusId));
+  const chosen = options.find((x) => x.id === substatusId);
+  const open = target?.category === 'open';
+  const needsSub = !!target && target.category !== 'open' && target.category !== 'won';
+  const needsDate = open && (!!chosen?.requiresScheduling || !lead.nextFollowUpAt);
+  const minDate = policy.data?.pastDateSelection ? undefined : isoToLocalInput(new Date().toISOString());
+  const dateChanged = !lead.nextFollowUpAt || next !== isoToLocalInput(lead.nextFollowUpAt);
+  const current = lead.substatusId ? substatuses.data?.find((x) => x.id === lead.substatusId) : undefined;
+
+  const choose = (s: Schemas['LeadStage']) => {
     setTarget(s);
-    setReasonId('');
+    setSubstatusId(s.id === lead.stageId ? (lead.substatusId ?? '') : '');
     setNote('');
     setNext(lead.nextFollowUpAt ? isoToLocalInput(lead.nextFollowUpAt) : isoToLocalInput(new Date(Date.now() + 86_400_000).toISOString()));
     changeStage.reset();
@@ -35,9 +46,9 @@ export function StageBar({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
     const ok = await changeStage
       .mutateAsync({
         stageId: target.id,
-        ...(reasonId ? { reasonId } : {}),
+        ...(substatusId ? { substatusId } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
-        ...(target.category === 'open' && next ? { nextFollowUpAt: localInputToIso(next) } : {}),
+        ...(open && next && (dateChanged || chosen?.requiresScheduling) ? { nextFollowUpAt: localInputToIso(next) } : {}),
       })
       .catch(() => null);
     if (ok) setTarget(null);
@@ -45,48 +56,47 @@ export function StageBar({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
         {stages.data
           ?.filter((s) => s.isActive !== false)
           .map((s) => {
-            const current = s.id === lead.stageId;
+            const isCurrent = s.id === lead.stageId;
             return (
               <button
                 key={s.id}
                 type="button"
-                disabled={!canEdit || current}
-                onClick={() => open(s)}
-                className={cn(
-                  'rounded px-2 py-1 text-xs',
-                  current ? 'bg-primary font-semibold text-primary-foreground' : 'bg-primary/10 text-foreground enabled:hover:bg-primary/20',
-                  (s.category === 'lost' || s.category === 'invalid') && !current && 'bg-muted text-muted-foreground',
-                  !canEdit && !current && 'opacity-70',
-                )}
+                disabled={!canEdit}
+                onClick={() => choose(s)}
+                title={isCurrent ? 'Change the substatus' : `Move to ${s.name}`}
+                className={cn('rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors', !canEdit && 'opacity-70', isCurrent ? 'text-white' : 'enabled:hover:opacity-80')}
+                style={isCurrent ? { background: s.color, boxShadow: `inset 0 0 0 1px ${s.color}` } : { color: s.color, background: `${s.color}12`, boxShadow: `inset 0 0 0 1px ${s.color}40` }}
               >
                 {s.name}
+                {isCurrent && current ? <span className="font-normal opacity-90"> · {current.name}</span> : null}
               </button>
             );
           })}
       </div>
 
       <Dialog open={!!target} onOpenChange={(v) => !v && setTarget(null)}>
-        <DialogContent title={`Move to ${target?.name ?? ''}`}>
+        <DialogContent title={target?.id === lead.stageId ? `${target?.name}: change substatus` : `Move to ${target?.name ?? ''}`}>
           <div className="space-y-3">
-            {reasonType ? (
-              <Field label="Reason *">
-                <Select value={reasonId} onChange={(e) => setReasonId(e.target.value)}>
-                  <option value="">Choose a reason</option>
-                  {reasons.data?.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
+            {options.length ? (
+              <Field label={needsSub ? 'Substatus *' : 'Substatus'}>
+                <Select value={substatusId} onChange={(e) => setSubstatusId(e.target.value)}>
+                  <option value="">{needsSub ? 'Choose a substatus' : 'None'}</option>
+                  {options.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                      {x.requiresScheduling ? ' (needs a date)' : ''}
                     </option>
                   ))}
                 </Select>
               </Field>
             ) : null}
-            {target?.category === 'open' ? (
-              <Field label="Next follow-up">
-                <Input type="datetime-local" value={next} onChange={(e) => setNext(e.target.value)} />
+            {open ? (
+              <Field label={needsDate ? 'Next follow-up *' : 'Next follow-up'}>
+                <Input type="datetime-local" min={minDate} value={next} onChange={(e) => setNext(e.target.value)} />
               </Field>
             ) : null}
             <Field label="Note">
@@ -97,8 +107,8 @@ export function StageBar({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
               <Button variant="outline" onClick={() => setTarget(null)}>
                 Cancel
               </Button>
-              <Button disabled={(!!reasonType && !reasonId) || changeStage.isPending} onClick={save}>
-                {changeStage.isPending ? 'Saving…' : 'Change stage'}
+              <Button disabled={(needsSub && !substatusId) || (needsDate && !next) || changeStage.isPending} onClick={save}>
+                {changeStage.isPending ? 'Saving…' : 'Save status'}
               </Button>
             </div>
           </div>

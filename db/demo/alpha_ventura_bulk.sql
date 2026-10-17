@@ -11,6 +11,10 @@
 
 BEGIN;
 
+-- Written with the old lead stages; converted to Hot / Warm / Cold / Sale Done at the end (_status_compat.sql).
+\ir _status_compat.sql
+SELECT pg_temp.demo_legacy_stages('cccccccc-0000-0000-0000-000000000001');
+
 DO $$
 DECLARE
   t constant uuid := 'cccccccc-0000-0000-0000-000000000001';
@@ -235,4 +239,5 @@ FROM demo_invoices i WHERE d.id = i.id;
 INSERT INTO document_sequences (tenant_id, doc_type, prefix, include_year, padding, current_year, next_number)
 VALUES ('cccccccc-0000-0000-0000-000000000001', 'sales_invoice', 'INV-', true, 4, extract(year FROM now())::int, 10)
 ON CONFLICT (tenant_id, doc_type) DO NOTHING;
+SELECT pg_temp.demo_convert_stages('cccccccc-0000-0000-0000-000000000001');
 COMMIT;

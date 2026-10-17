@@ -14,23 +14,12 @@ export interface GridColumn {
 
 const NUMERIC = new Set(['number', 'money', 'percent']);
 
-/** Stage colours by stage name: early (blue), working (amber), late (violet), won (green), lost / invalid (red / grey). */
+/** Status colours by name (Hot, Warm, Cold, Sale Done), matching Global Configuration › Manage Status. */
 const STAGE_TONE: Record<string, string> = {
-  New: 'bg-sky-50 text-sky-700 ring-sky-200',
-  Pending: 'bg-sky-50 text-sky-700 ring-sky-200',
-  Attempted: 'bg-amber-50 text-amber-700 ring-amber-200',
-  'No Response': 'bg-orange-50 text-orange-700 ring-orange-200',
-  'Follow-up': 'bg-amber-50 text-amber-700 ring-amber-200',
-  Warm: 'bg-orange-50 text-orange-700 ring-orange-200',
   Hot: 'bg-rose-50 text-rose-700 ring-rose-200',
-  Qualified: 'bg-teal-50 text-teal-700 ring-teal-200',
-  'Meeting Scheduled': 'bg-violet-50 text-violet-700 ring-violet-200',
-  'Viewing Scheduled': 'bg-violet-50 text-violet-700 ring-violet-200',
-  'EOI Submitted': 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-  Booked: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-  Won: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  Lost: 'bg-red-50 text-red-700 ring-red-200',
-  Invalid: 'bg-slate-100 text-slate-600 ring-slate-200',
+  Warm: 'bg-amber-50 text-amber-700 ring-amber-200',
+  Cold: 'bg-sky-50 text-sky-700 ring-sky-200',
+  'Sale Done': 'bg-emerald-50 text-emerald-700 ring-emerald-200',
 };
 
 const AVATAR_TONES = ['bg-teal-100 text-teal-800', 'bg-sky-100 text-sky-800', 'bg-violet-100 text-violet-800', 'bg-amber-100 text-amber-800', 'bg-rose-100 text-rose-800', 'bg-emerald-100 text-emerald-800', 'bg-indigo-100 text-indigo-800'];

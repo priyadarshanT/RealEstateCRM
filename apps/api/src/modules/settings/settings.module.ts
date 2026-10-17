@@ -1,16 +1,16 @@
 import { Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module';
-import { LeadSourcesController, LeadStagesController, ReasonsController } from './lead-config.controller';
+import { LeadSourcesController, LeadStagesController, LeadSubstatusesController, ReasonsController } from './lead-config.controller';
 import { LeadConfigService } from './lead-config.service';
 import { LeadConfigRepository } from './repositories/lead-config.repository';
 import { SettingsRepository } from './repositories/settings.repository';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 
-/** Settings: tenant settings, currencies, lead stages, reasons, lead sources (SRS §11.5). */
+/** Global Configuration: tenant settings, currencies, lead statuses and substatuses, reasons, lead sources. */
 @Module({
   imports: [OrganizationModule],
-  controllers: [SettingsController, LeadStagesController, ReasonsController, LeadSourcesController],
+  controllers: [SettingsController, LeadStagesController, LeadSubstatusesController, ReasonsController, LeadSourcesController],
   providers: [SettingsRepository, LeadConfigRepository, SettingsService, LeadConfigService],
   exports: [SettingsService, LeadConfigService],
 })

@@ -17,10 +17,10 @@ INSERT INTO lead_sources (id, tenant_id, type, name) VALUES
  ('b1000000-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','meta','Meta');
 INSERT INTO leads (id, tenant_id, full_name, phone_primary, source_id, stage_id, stage_category, owner_user_id, assigned_at, next_follow_up_at)
 SELECT 'a2000000-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000001','Ahmed','+971501234567','a1000000-0000-0000-0000-000000000001', s.id, 'open','a0000000-0000-0000-0000-00000000000c', now(), now()+interval '1 day'
-FROM lead_stages s WHERE s.tenant_id='aaaaaaaa-0000-0000-0000-000000000001' AND s.key='pending';
+FROM lead_stages s WHERE s.tenant_id='aaaaaaaa-0000-0000-0000-000000000001' AND s.key='warm';
 INSERT INTO leads (id, tenant_id, full_name, phone_primary, source_id, stage_id, stage_category)
 SELECT 'b2000000-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Other lead','+971509999999','b1000000-0000-0000-0000-000000000001', s.id, 'open'
-FROM lead_stages s WHERE s.tenant_id='bbbbbbbb-0000-0000-0000-000000000001' AND s.key='new';
+FROM lead_stages s WHERE s.tenant_id='bbbbbbbb-0000-0000-0000-000000000001' AND s.key='warm';
 INSERT INTO lead_inquiries (tenant_id, lead_id, source_id, external_submission_id, form_answers, submitted_at)
 VALUES ('aaaaaaaa-0000-0000-0000-000000000001','a2000000-0000-0000-0000-000000000001','a1000000-0000-0000-0000-000000000001','META-123','{"budget":"3M"}', now());
 INSERT INTO developers (id, tenant_id, name) VALUES ('a3000000-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000001','Emaar');

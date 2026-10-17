@@ -121,6 +121,10 @@ INSERT INTO units (id, tenant_id, project_id, building_id, unit_number, property
   ('cb000000-0000-0000-0000-000000000008', 'cccccccc-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000004', 'ca000000-0000-0000-0000-000000000004', '604',  'apartment', 1, 2,  820,  6, 'Lagoon',  1550000),
   ('cb000000-0000-0000-0000-000000000009', 'cccccccc-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000004', NULL,                                   'V-12', 'villa',     4, 5, 4200, NULL, 'Park', 8900000);
 
+-- Written with the old lead stages; converted to Hot / Warm / Cold / Sale Done at the end (_status_compat.sql).
+\ir _status_compat.sql
+SELECT pg_temp.demo_legacy_stages('cccccccc-0000-0000-0000-000000000001');
+
 -- ---------------------------------------------------------------- leads: two per agent, in their team
 INSERT INTO leads (id, tenant_id, full_name, phone_primary, email, country_code, budget_min, budget_max, budget_currency, source_id,
                    stage_id, stage_category, owner_user_id, team_id, assigned_at, next_follow_up_at, priority, latest_note)
@@ -183,5 +187,7 @@ INSERT INTO leave_types (tenant_id, name, annual_days, is_paid) VALUES
   ('cccccccc-0000-0000-0000-000000000001', 'Annual', 30, true),
   ('cccccccc-0000-0000-0000-000000000001', 'Sick',   15, true),
   ('cccccccc-0000-0000-0000-000000000001', 'Unpaid', NULL, false);
+
+SELECT pg_temp.demo_convert_stages('cccccccc-0000-0000-0000-000000000001');
 
 COMMIT;

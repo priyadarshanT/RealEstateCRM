@@ -97,7 +97,7 @@ export class LeadIntakeService {
 
     if (existing) return this.reEnquire(existing, inquiryBase, source.name, input.projectId ?? null);
 
-    const stage = await this.leads.stageByKey('new');
+    const stage = await this.leads.stageByKey('warm');
     const lead = await this.repo.insert({
       fullName: input.fullName?.trim() || email || phone!,
       phonePrimary: phone ?? null,
@@ -144,11 +144,11 @@ export class LeadIntakeService {
     await this.repo.addActivity(lead.id, { type: 're_enquiry', summary: `Re-enquired via ${sourceName}`, links: { inquiryId: inquiry.id } });
     if (projectId) await this.repo.addProject(lead.id, projectId);
 
-    // Lost or Invalid → back to Follow-up with the same agent (SRS §2.7).
+    // Cold → back to Warm with the same agent (SRS §2.7).
     let reopened = false;
     if (lead.stageCategory === 'lost' || lead.stageCategory === 'invalid') {
-      const followUp = await this.leads.stageByKey('follow_up');
-      await this.actions.applyStage(lead, { stageId: followUp.id, note: `Reopened: re-enquired via ${sourceName}`, nextFollowUpAt: new Date().toISOString() }, null, true);
+      const warm = await this.leads.stageByKey('warm');
+      await this.actions.applyStage(lead, { stageId: warm.id, note: `Reopened: re-enquired via ${sourceName}`, nextFollowUpAt: new Date().toISOString() }, null, true);
       reopened = true;
     }
 

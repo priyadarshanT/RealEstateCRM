@@ -1,4 +1,4 @@
-"""Runs the 51 database rule tests. Needs the sample data (tests/sample_data.sql) loaded.
+"""Runs the 54 database rule tests. Needs the sample data (tests/sample_data.sql) loaded.
 Settings come from environment variables: PGPASSWORD (required), PGHOST, PGPORT, PGUSER, PGDATABASE, PSQL."""
 import subprocess
 A="aaaaaaaa-0000-0000-0000-000000000001"; B="bbbbbbbb-0000-0000-0000-000000000001"
@@ -21,9 +21,12 @@ tests=[
 ("Tenant A cannot read tenant B's lead by ID","SELECT count(*) FROM leads WHERE id='b2000000-0000-0000-0000-000000000001'",True,A,"ok","0"),
 ("Lead cannot point to another tenant's user",f"UPDATE leads SET owner_user_id='b0000000-0000-0000-0000-00000000000a' WHERE id='a2000000-0000-0000-0000-000000000001'",False,None,"err","foreign key"),
 ("Same submission cannot be imported twice",f"INSERT INTO lead_inquiries (tenant_id,lead_id,source_id,external_submission_id,submitted_at) VALUES ('{A}','a2000000-0000-0000-0000-000000000001','a1000000-0000-0000-0000-000000000001','META-123',now())",True,A,"err","lead_inquiries_submission_uq"),
-("Stage category must match the stage",f"UPDATE leads SET stage_id={STG('lost')}, stage_category='open' WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","foreign key"),
-("Lost requires a reason",f"UPDATE leads SET stage_id={STG('lost')}, stage_category='lost', closed_at=now() WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","check constraint"),
-("Lost with a reason is accepted",f"UPDATE leads SET stage_id={STG('lost')}, stage_category='lost', closed_at=now(), close_reason_id=(SELECT id FROM reasons WHERE tenant_id='{A}' AND type='lost' LIMIT 1) WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"ok",""),
+("Status category must match the status",f"UPDATE leads SET stage_id={STG('cold')}, stage_category='open' WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","foreign key"),
+("Cold requires a substatus",f"UPDATE leads SET stage_id={STG('cold')}, stage_category='lost', closed_at=now() WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","check constraint"),
+("Cold with a substatus is accepted",f"UPDATE leads SET stage_id={STG('cold')}, stage_category='lost', closed_at=now(), substatus_id=(SELECT id FROM lead_substatuses WHERE tenant_id='{A}' AND name='Not Interested') WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"ok",""),
+("Substatus must belong to the lead's status",f"UPDATE leads SET substatus_id=(SELECT id FROM lead_substatuses WHERE tenant_id='{A}' AND name='Not Interested') WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","foreign key"),
+("Substatus names are unique per status",f"INSERT INTO lead_substatuses (tenant_id,stage_id,name,sort_order) VALUES ('{A}',{STG('hot')},'zoom schedule',9)",True,A,"err","lead_substatuses_name_uq"),
+("Tenant A cannot see tenant B's substatuses",f"SELECT count(*) FROM lead_substatuses WHERE tenant_id='{B}'",True,A,"ok","0"),
 ("Open assigned lead must have a next follow-up","UPDATE leads SET next_follow_up_at=NULL WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","check constraint"),
 ("Response deadline only when the lead has an owner","UPDATE leads SET owner_user_id=NULL, assigned_at=NULL, response_due_at=now() WHERE id='a2000000-0000-0000-0000-000000000001'",True,A,"err","check constraint"),
 ("10-minute rule move is logged (no_response)",f"INSERT INTO lead_assignments (tenant_id,lead_id,from_user_id,to_user_id,method,reason_id) VALUES ('{A}','a2000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-00000000000c','a0000000-0000-0000-0000-00000000000d','no_response',(SELECT id FROM reasons WHERE tenant_id='{A}' AND key='no_response'))",True,A,"ok",""),

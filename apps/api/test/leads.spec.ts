@@ -19,6 +19,7 @@ describe('leads module', () => {
   let adminB: Client;
   let stage: Record<string, string>;
   let reason: Record<string, string>;
+  let sub: Record<string, string>;
   let teamId: string;
 
   const uniquePhone = (() => {
@@ -37,6 +38,8 @@ describe('leads module', () => {
     stage = Object.fromEntries(stages.body.data.map((s: { key: string; id: string }) => [s.key, s.id]));
     const reasons = await admin.get('/api/v1/reasons?limit=200').expect(200);
     reason = Object.fromEntries(reasons.body.data.map((r: { type: string; name: string; id: string }) => [`${r.type}:${r.name}`, r.id]));
+    const subs = await admin.get('/api/v1/lead-substatuses').expect(200);
+    sub = Object.fromEntries(subs.body.data.map((s: { name: string; id: string }) => [s.name, s.id]));
     // Team: Sara leads it, Ali is a member.
     const team = await admin.post('/api/v1/teams').send({ name: 'Leads Test Team', teamLeaderUserId: USERS.saraA.id }).expect(201);
     teamId = team.body.id;
@@ -53,9 +56,9 @@ describe('leads module', () => {
   }
 
   describe('create and duplicates', () => {
-    it('creates a lead in stage New with its first enquiry, history and timeline', async () => {
+    it('creates a lead as Warm with its first enquiry, history and timeline', async () => {
       const lead = await newLead(admin, { email: 'Buyer.One@Mail.com', budgetMin: '1000000', budgetMax: '2500000.5', budgetCurrency: 'AED', projectIds: [PROJECT_BEACHFRONT], note: 'Wants sea view' });
-      expect(lead).toMatchObject({ stageId: stage.new, stageCategory: 'open', email: 'buyer.one@mail.com', budgetMax: '2500000.50', projectIds: [PROJECT_BEACHFRONT], latestNote: 'Wants sea view', version: 1, enquiryCount: 1 });
+      expect(lead).toMatchObject({ stageId: stage.warm, stageCategory: 'open', substatusId: null, email: 'buyer.one@mail.com', budgetMax: '2500000.50', projectIds: [PROJECT_BEACHFRONT], latestNote: 'Wants sea view', version: 1, enquiryCount: 1 });
       // Score (weights 30/20/20/30): budget both ends 100, project 100, source quality 50, engagement 1 note = 5 → 61.5 → 62.
       expect(lead.score).toBe(62);
       const timeline = await admin.get(`/api/v1/leads/${lead.id}/timeline`).expect(200);
@@ -72,7 +75,7 @@ describe('leads module', () => {
 
     it('an existing phone returns 409 LEAD_EXISTS with the owner, and check-existing warns while typing', async () => {
       const res = await admin.post('/api/v1/leads').send({ fullName: 'Ahmed again', phonePrimary: '+971501234567', sourceId: SOURCE_META_A }).expect(409);
-      expect(res.body).toMatchObject({ code: 'LEAD_EXISTS', lead: { leadId: SAMPLE_LEAD, ownerUserId: USERS.aliA.id, ownerName: 'Ali', stageName: 'Pending' } });
+      expect(res.body).toMatchObject({ code: 'LEAD_EXISTS', lead: { leadId: SAMPLE_LEAD, ownerUserId: USERS.aliA.id, ownerName: 'Ali', stageName: 'Warm' } });
       expect(res.body.detail).toBe('This lead already exists, owned by Ali.');
       const check = await mira.get('/api/v1/leads/check-existing?phone=%2B971501234567').expect(200);
       expect(check.body).toMatchObject({ exists: true, lead: { leadId: SAMPLE_LEAD } });
@@ -142,22 +145,27 @@ describe('leads module', () => {
   });
 
   describe('stage, owner, notes', () => {
-    it('Lost needs a reason of the right type; reopening needs a next follow-up; history and timeline are kept', async () => {
+    it('Cold needs one of its substatuses; scheduling substatuses need a date that is not in the past; history and timeline are kept', async () => {
       const lead = await newLead(admin, { ownerUserId: USERS.aliA.id });
-      const noReason = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.lost }).expect(422);
-      expect(noReason.body.code).toBe('REASON_REQUIRED');
-      await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.lost, reasonId: reason['invalid:Wrong number'] }).expect(400);
-      const lost = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.lost, reasonId: reason['lost:Budget too low'], note: 'Too expensive' }).expect(200);
-      expect(lost.body).toMatchObject({ stageCategory: 'lost', closeReasonId: reason['lost:Budget too low'], responseDueAt: null });
+      const noSub = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.cold }).expect(422);
+      expect(noSub.body.code).toBe('REASON_REQUIRED');
+      await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.cold, substatusId: sub['Zoom Schedule'] }).expect(400);
+      const cold = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.cold, substatusId: sub['Not Interested'], note: 'Too expensive' }).expect(200);
+      expect(cold.body).toMatchObject({ stageCategory: 'lost', substatusId: sub['Not Interested'], responseDueAt: null, nextFollowUpAt: null });
+      expect(cold.body.score).toBe(0); // Cold leads score 0
+      await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.cold, substatusId: sub['Fake'], nextFollowUpAt: '2030-01-01T09:00:00Z' }).expect(400);
 
-      expect(lost.body.score).toBe(0); // Lost leads score 0
-      const back = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.follow_up, nextFollowUpAt: '2030-01-01T09:00:00Z' }).expect(200);
+      const noDate = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.hot, substatusId: sub['Zoom Schedule'] }).expect(400);
+      expect(noDate.body.errors[0].field).toBe('nextFollowUpAt');
+      const past = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.hot, substatusId: sub['Zoom Schedule'], nextFollowUpAt: '2020-01-01T09:00:00Z' }).expect(400);
+      expect(past.body.errors[0].message).toContain('past dates are turned off');
+      const back = await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.hot, substatusId: sub['Zoom Schedule'], nextFollowUpAt: '2030-01-01T09:00:00Z' }).expect(200);
       expect(back.body.score).toBeGreaterThan(0);
-      expect(back.body).toMatchObject({ stageCategory: 'open', closeReasonId: null, nextFollowUpAt: '2030-01-01T09:00:00.000Z' });
-      const history = await ownerQuery<{ n: number }>(`SELECT count(*)::int AS n FROM lead_stage_history WHERE lead_id = $1`, [lead.id]);
-      expect(history[0]!.n).toBe(3);
+      expect(back.body).toMatchObject({ stageCategory: 'open', substatusId: sub['Zoom Schedule'], nextFollowUpAt: '2030-01-01T09:00:00.000Z' });
+      const history = await ownerQuery<{ n: number }>(`SELECT count(*)::int AS n FROM lead_stage_history WHERE lead_id = $1 AND to_substatus_id IS NOT NULL`, [lead.id]);
+      expect(history[0]!.n).toBe(2);
       const timeline = await ali.get(`/api/v1/leads/${lead.id}/timeline?types=stage_change`).expect(200);
-      expect(timeline.body.data[0].summary).toBe('Stage: Lost → Follow-up');
+      expect(timeline.body.data[0].summary).toBe('Status: Cold · Not Interested → Hot · Zoom Schedule');
     });
 
     it("the owner's first note stops the 10-minute timer; someone else's note does not", async () => {
@@ -222,8 +230,10 @@ describe('leads module', () => {
     it('tabs, filters, sorting, paging and total', async () => {
       const unassigned = await admin.get('/api/v1/leads?tab=unassigned&limit=200').expect(200);
       expect(unassigned.body.data.every((l: { ownerUserId: string | null }) => l.ownerUserId === null)).toBe(true);
-      const pending = await admin.get('/api/v1/leads?tab=pending&limit=200').expect(200);
-      expect(pending.body.data.map((l: { id: string }) => l.id)).toContain(SAMPLE_LEAD);
+      const warm = await admin.get('/api/v1/leads?tab=warm&limit=200').expect(200);
+      expect(warm.body.data.map((l: { id: string }) => l.id)).toContain(SAMPLE_LEAD);
+      const hot = await admin.get('/api/v1/leads?tab=hot&limit=200').expect(200);
+      expect(hot.body.data.map((l: { id: string }) => l.id)).not.toContain(SAMPLE_LEAD);
       const search = await admin.get('/api/v1/leads?q=501234567').expect(200);
       expect(search.body.data.map((l: { id: string }) => l.id)).toEqual([SAMPLE_LEAD]);
       const byProject = await admin.get(`/api/v1/leads?projectId=${PROJECT_BEACHFRONT}&limit=200`).expect(200);
@@ -236,11 +246,11 @@ describe('leads module', () => {
     });
 
     it('saved filters: private per user, shared with a team, applied to the list', async () => {
-      const saved = await sara.post('/api/v1/saved-filters').send({ entity: 'leads', name: 'Pending only', filters: { tab: 'pending' }, sharedTeamId: teamId }).expect(201);
+      const saved = await sara.post('/api/v1/saved-filters').send({ entity: 'leads', name: 'Warm only', filters: { tab: 'warm' }, sharedTeamId: teamId }).expect(201);
       const aliSees = await ali.get('/api/v1/saved-filters?entity=leads').expect(200);
       expect(aliSees.body.data.map((f: { id: string }) => f.id)).toContain(saved.body.id);
       const applied = await ali.get(`/api/v1/leads?savedFilterId=${saved.body.id}&limit=200`).expect(200);
-      expect(applied.body.data.every((l: { stageId: string }) => l.stageId === stage.pending)).toBe(true);
+      expect(applied.body.data.every((l: { stageId: string }) => l.stageId === stage.warm)).toBe(true);
       await ali.delete(`/api/v1/saved-filters/${saved.body.id}`).expect(404);
       await sara.delete(`/api/v1/saved-filters/${saved.body.id}`).expect(204);
     });
@@ -276,13 +286,13 @@ describe('leads module', () => {
       expect(timeline.body.data[0].summary).toBe('Re-enquired via Meta');
     });
 
-    it('a Lost lead reopens in Follow-up with the same agent', async () => {
+    it('a Cold lead reopens as Warm with the same agent', async () => {
       const lead = await newLead(admin, { ownerUserId: USERS.aliA.id, email: 'reopen@x.ae' });
-      await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.lost, reasonId: reason['lost:Not interested'] }).expect(200);
+      await ali.post(`/api/v1/leads/${lead.id}/stage`).send({ stageId: stage.cold, substatusId: sub['Not Interested'] }).expect(200);
       const result = await receive({ sourceId: SOURCE_META_A, email: 'REOPEN@x.ae' });
       expect(result).toEqual({ status: 're_enquired', leadId: lead.id, reopened: true });
       const after = await ali.get(`/api/v1/leads/${lead.id}`).expect(200);
-      expect(after.body).toMatchObject({ stageId: stage.follow_up, ownerUserId: USERS.aliA.id, enquiryCount: 2 });
+      expect(after.body).toMatchObject({ stageId: stage.warm, substatusId: null, ownerUserId: USERS.aliA.id, enquiryCount: 2 });
     });
 
     it('a new contact creates a lead; invalid rows are rejected with reasons', async () => {

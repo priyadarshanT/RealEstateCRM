@@ -86,8 +86,8 @@ export function LeadFilters({ value, onChange }: { value: LeadFilterState; onCha
           </Select>
         </>
       ) : null}
-      <Select className="h-8 w-auto text-xs" value={value.stageId ?? ''} onChange={(e) => set({ stageId: opt(e.target.value) })} aria-label="Stage">
-        <option value="">Stage</option>
+      <Select className="h-8 w-auto text-xs" value={value.stageId ?? ''} onChange={(e) => set({ stageId: opt(e.target.value) })} aria-label="Status">
+        <option value="">Status</option>
         {stages.data?.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}

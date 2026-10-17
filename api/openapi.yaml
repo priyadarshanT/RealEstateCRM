@@ -916,7 +916,9 @@ paths:
       - Settings
       summary: List settings
       operationId: listSettings
-      description: 'Keys: leads.response_time, leads.scoring, finance.numbering, …
+      description: 'Global Configuration. Keys: general.preferences, security.policy, leads.features,
+        leads.response_time, leads.scoring, finance.numbering. Settings never saved are listed with their default
+        and an empty updatedAt.
 
 
         **Permission:** `settings.manage`'
@@ -942,12 +944,15 @@ paths:
         '429':
           $ref: '#/components/responses/TooMany'
   /settings/{key}:
-    put:
+    get:
       tags:
       - Settings
-      summary: Update setting
-      operationId: updateSetting
-      description: '**Permission:** `settings.manage`'
+      summary: Get setting
+      operationId: getSetting
+      description: 'The saved value, or the default. The ETag is used as If-Match when saving.
+
+
+        **Permission:** `settings.manage`'
       x-permission: settings.manage
       parameters:
       - name: key
@@ -955,6 +960,45 @@ paths:
         required: true
         schema:
           type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Setting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    put:
+      tags:
+      - Settings
+      summary: Update setting
+      operationId: updateSetting
+      description: 'With If-Match, a change saved by someone else first answers 409 VERSION_CONFLICT. Every change is
+        written to the audit log with the value before and after.
+
+
+        **Permission:** `settings.manage`'
+      x-permission: settings.manage
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -970,6 +1014,10 @@ paths:
       responses:
         '200':
           description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -982,17 +1030,80 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /settings/{key}/history:
+    get:
+      tags:
+      - Settings
+      summary: Change history of a setting
+      operationId: listSettingHistory
+      description: '**Permission:** `settings.manage`'
+      x-permission: settings.manage
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SettingChange'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /client-policy:
+    get:
+      tags:
+      - Settings
+      summary: Global Configuration switches for the screens
+      operationId: getClientPolicy
+      description: 'Any signed-in user. The values the screens follow to hide what is turned off (the API enforces
+        the same switches).'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/TooMany'
   /lead-stages:
     get:
       tags:
       - Settings
-      summary: List lead stages
+      summary: List lead statuses
       operationId: listLeadStages
-      description: '**Permission:** `leads.view`'
+      description: 'The four fixed statuses Hot, Warm, Cold and Sale Done (Global Configuration › Manage
+        Status). They cannot be added or deleted.
+
+
+        **Permission:** `leads.view`'
       x-permission: leads.view
       parameters:
       - $ref: '#/components/parameters/Cursor'
@@ -1022,45 +1133,11 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooMany'
-    post:
-      tags:
-      - Settings
-      summary: Create lead stage
-      operationId: createLeadStage
-      description: '**Permission:** `settings.manage`'
-      x-permission: settings.manage
-      parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LeadStage'
-      responses:
-        '201':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeadStage'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Unprocessable'
-        '429':
-          $ref: '#/components/responses/TooMany'
   /lead-stages/{id}:
     get:
       tags:
       - Settings
-      summary: Get lead stage
+      summary: Get lead status
       operationId: getLeadStage
       description: '**Permission:** `leads.view`'
       x-permission: leads.view
@@ -1083,11 +1160,160 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooMany'
+  /lead-substatuses:
+    get:
+      tags:
+      - Settings
+      summary: List lead substatuses
+      operationId: listLeadSubstatuses
+      description: '**Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - name: stageId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadSubstatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    post:
+      tags:
+      - Settings
+      summary: Add a substatus
+      operationId: createLeadSubstatus
+      description: 'Names are unique per status (ignoring case). Only the Admin manages substatuses.
+
+
+        **Permission:** `settings.manage`'
+      x-permission: settings.manage
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadSubstatusInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadSubstatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /lead-substatuses/order:
+    put:
+      tags:
+      - Settings
+      summary: Reorder the substatuses of a status
+      operationId: reorderLeadSubstatuses
+      description: '**Permission:** `settings.manage`'
+      x-permission: settings.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stageId
+              - ids
+              properties:
+                stageId:
+                  type: string
+                  format: uuid
+                ids:
+                  type: array
+                  description: Every substatus of the status, once, in the new order
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadSubstatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /lead-substatuses/{id}:
+    get:
+      tags:
+      - Settings
+      summary: Get a substatus
+      operationId: getLeadSubstatus
+      description: '**Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadSubstatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
     patch:
       tags:
       - Settings
-      summary: Update lead stage
-      operationId: updateLeadStage
+      summary: Rename, turn off or change a substatus
+      operationId: updateLeadSubstatus
       description: '**Permission:** `settings.manage`'
       x-permission: settings.manage
       parameters:
@@ -1098,14 +1324,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LeadStage'
+              $ref: '#/components/schemas/LeadSubstatusInput'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeadStage'
+                $ref: '#/components/schemas/LeadSubstatus'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1123,9 +1349,12 @@ paths:
     delete:
       tags:
       - Settings
-      summary: Delete lead stage
-      operationId: deleteLeadStage
-      description: '**Permission:** `settings.manage`'
+      summary: Delete an unused substatus
+      operationId: deleteLeadSubstatus
+      description: 'A substatus a lead has used answers 409; turn it off instead.
+
+
+        **Permission:** `settings.manage`'
       x-permission: settings.manage
       parameters:
       - $ref: '#/components/parameters/Id'
@@ -1582,17 +1811,23 @@ paths:
           - team
           - unassigned
           - deleted
-          - new
-          - pending
+          - hot
+          - warm
+          - cold
+          - sale_done
           - scheduled
           - overdue
-          - cold
       - name: q
         in: query
         schema:
           type: string
         description: Name, phone or email
       - name: stageId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: substatusId
         in: query
         schema:
           type: string
@@ -10694,12 +10929,67 @@ components:
           type: object
           additionalProperties: true
         updatedAt:
-          type: string
-          format: date-time
+          oneOf:
+          - type: string
+            format: date-time
+          - type: 'null'
           readOnly: true
+          description: Empty while the default is used
       required:
       - key
       - value
+    ClientPolicy:
+      type: object
+      properties:
+        allowCopyPaste:
+          type: boolean
+        exportLeads:
+          type: boolean
+        sourceUpdate:
+          type: boolean
+        pastDateSelection:
+          type: boolean
+        mandatoryLocation:
+          type: boolean
+        unassignedCommunication:
+          type: boolean
+        dualOwnership:
+          type: boolean
+        defaultCountry:
+          type: string
+          pattern: ^[A-Z]{2}$
+        defaultCurrency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      required:
+      - allowCopyPaste
+      - exportLeads
+      - sourceUpdate
+      - pastDateSelection
+      - mandatoryLocation
+      - unassignedCommunication
+      - dualOwnership
+      - defaultCountry
+      - defaultCurrency
+    SettingChange:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        userId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        userName:
+          oneOf:
+          - type: string
+          - type: 'null'
+        before: {}
+        after: {}
+      required:
+      - at
     LeadStage:
       type: object
       properties:
@@ -10725,12 +11015,70 @@ components:
           readOnly: true
         isActive:
           type: boolean
+        color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+        description:
+          oneOf:
+          - type: string
+          - type: 'null'
+        requiresScheduling:
+          type: boolean
+          description: Moving a lead here needs a date and time
       required:
       - id
       - key
       - name
       - category
       - sortOrder
+      - color
+      - requiresScheduling
+      description: 'One of the four fixed lead statuses: hot, warm (open), cold (closed, needs a substatus), sale_done
+        (won).'
+    LeadSubstatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        stageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        requiresScheduling:
+          type: boolean
+          description: Choosing it needs a date and time
+      required:
+      - id
+      - stageId
+      - name
+      - sortOrder
+      - isActive
+      - requiresScheduling
+    LeadSubstatusInput:
+      type: object
+      properties:
+        stageId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        sortOrder:
+          type: integer
+          minimum: 1
+        isActive:
+          type: boolean
+        requiresScheduling:
+          type: boolean
+      description: stageId and name are required on create; the status of a substatus cannot change.
     Reason:
       type: object
       properties:
@@ -10872,6 +11220,10 @@ components:
       properties:
         fullName:
           type: string
+        sourceId:
+          type: string
+          format: uuid
+          description: Only when Global Configuration › Lead Source Update is on
         phonePrimary:
           type: string
           pattern: ^\+[1-9][0-9]{6,14}$
@@ -11012,11 +11364,20 @@ components:
           - won
           - lost
           - invalid
+        substatusId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
         closeReasonId:
           oneOf:
           - type: string
             format: uuid
           - type: 'null'
+        contactHidden:
+          type: boolean
+          readOnly: true
+          description: Phone and email are masked for this user (Hide Lead Contact Info)
         score:
           type: integer
           minimum: 0
@@ -11100,6 +11461,9 @@ components:
         stageId:
           type: string
           format: uuid
+        substatusId:
+          type: string
+          format: uuid
         reasonId:
           type: string
           format: uuid
@@ -11110,7 +11474,8 @@ components:
           format: date-time
       required:
       - stageId
-      description: reasonId is required when the stage category is lost or invalid
+      description: 'substatusId is required for Cold; a substatus that requires scheduling needs nextFollowUpAt,
+        which may not be in the past unless Enable Past Date Selection is on.'
     Assign:
       type: object
       properties:
@@ -11323,6 +11688,9 @@ components:
           type: string
           format: uuid
         stageId:
+          type: string
+          format: uuid
+        substatusId:
           type: string
           format: uuid
         reasonId:

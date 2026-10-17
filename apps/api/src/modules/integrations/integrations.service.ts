@@ -332,7 +332,7 @@ export class IntegrationsService {
    * token in SSM, subscribes the page to lead events. Returns where to send the browser.
    */
   async finishOAuth(provider: string, code: string | undefined, state: string): Promise<string> {
-    const back = (q: Record<string, string>) => `${this.config.WEB_APP_URL}/settings?${new URLSearchParams({ tab: 'connections', ...q })}`;
+    const back = (q: Record<string, string>) => `${this.config.WEB_APP_URL}/configuration?${new URLSearchParams({ tab: 'integrations', ...q })}`;
     const claims = this.verifyState(state);
     if (!claims || provider !== 'meta') return back({ error: 'invalid_state' });
     return this.db.withTenant(claims.t, async () => {

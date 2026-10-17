@@ -5,6 +5,15 @@ Based on the developer requirements brief (29 September 2026), stakeholder feedb
 
 ---
 
+## Stakeholder update · 17 October 2026 (Global Configuration)
+
+| # | Decision | What changed |
+|---|---|---|
+| 1 | Settings & Integrations is replaced by **Global Configuration** | Section 11: one page with Module Settings (16 cards), Integration (12 cards in 3 tabs) and Communication (3 cards). The old page is removed. |
+| 2 | Lead stages become four fixed **statuses** with **substatuses** | Hot, Warm, Cold, Sale Done replace the 15 stages. Only the Admin manages substatuses. Every new lead starts as Warm. Existing leads moved: Won → Sale Done; Lost → Cold / Not Interested; Invalid → Cold / Invalid / Out of Service; Hot, Qualified, Meeting, Viewing, EOI, Booked → Hot; the rest → Warm (history kept). |
+| 3 | Cold needs a substatus instead of a Lost / Invalid reason | Reasons remain for reassignment only. |
+| 4 | Lead switches, enforced by the server | Export Leads, Lead Source Update, Dual Lead Ownership (+ secondary owner notification), Past Date Selection, Hide Lead Contact Info (per role), Mandatory Location, Communication on Unassigned Leads. Exports and messages to unassigned leads are off by default. |
+
 ## What changed in version 1.2
 
 | # | Decision | What changed in this document |
@@ -138,11 +147,10 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 
 | Tab | Shows |
 |---|---|
-| New / Pending | Leads in that stage |
+| Hot / Warm / Cold / Sale Done | Leads in that status |
 | Shared with Me | Leads other users shared with me |
 | Scheduled | Leads with an upcoming call, meeting or viewing |
 | Overdue | Leads whose next follow-up date has passed |
-| Cold | Leads in the No Response stage |
 | Unassigned | Leads without an agent |
 | Deleted | Deleted leads |
 
@@ -260,13 +268,18 @@ The Team menu has three parts.
 6. Filters: date, team, agent, project, campaign. Click any number to see the leads behind it.
 7. Numbers are at most 5 minutes old.
 
-## 11. Settings and integrations · Phase 2 (settings in Phase 1)
+## 11. Global Configuration · stakeholder update 17 October 2026
 
-1. One screen to connect: Meta, Google Ads, LinkedIn, Snapchat, TikTok, Property Finder, Bayut, Dubizzle, WhatsApp, email, Google (Calendar and Meet), Microsoft 365 (Calendar and Teams), and the general webhook.
-2. **General webhook:** a secure link that any system can send leads to: the website, Google Sheets, Excel (via Power Automate), Make.com or any other tool. Admin maps the incoming fields to CRM fields (name, phone, email, project…) once, and every new row or form becomes a lead.
-3. For each connection: account, status, last sync, records received, failures, error details, and Test, Retry, Disconnect buttons.
-4. Failed incoming data is retried automatically, then shown for manual retry.
-5. Admins can set: stages, reasons, assignment rules, response time (10 minutes by default), teams, work hours, templates, currencies, invoice numbering, scoring and report access.
+1. **Global Configuration** (menu, Admin only) replaces Settings & Integrations. Three sections: **Module Settings**, **Integration**, **Communication**. Cards: wide, rounded, coloured icon, title and description; the whole card opens its page. 4 columns on desktop, 2 on tablet, 1 on mobile.
+2. Each module page has a title, description, Back, **Save Changes** and **Cancel**, and warns before leaving with unsaved changes. Switches are labelled On / Off; dependent fields appear only when relevant.
+3. Module cards: General, Security, Attendance, Leads, Data, Projects and Properties, Locality, QR Code, Tags, Manage Marketing, Migration, Manage Status, Listing Management, Automation, Manage Source, Dev Resources. Modules without an agreed scope are shown as "Not available yet", never as finished.
+4. **General:** call notifications and call detection (need a calling integration), default country (name, ISO code, dial code), default currency (no silent conversion), watermark (text or logo, opacity, placement, preview, file types), currencies and exchange rates, invoice numbering.
+5. **Security:** require two-factor sign-in, allow copy and paste (Admins keep it), disable screenshots (not possible in web browsers; saved for a mobile app).
+6. **Leads:** the switches in the update table above, plus response time (10 minutes by default), lead score weights, assignment rules and reassignment reasons. Rotation follows in a later update.
+7. **Manage Status:** Hot, Warm (open; need a next follow-up), Cold (closed; needs a substatus), Sale Done (won). Substatuses: name, order, active, requires scheduling (a date and time is then required). Names are unique per status; a substatus a lead has used cannot be deleted, only turned off.
+8. **Integration:** 3rd Parties (Webhook, Skyloov, Dubizzle, Bayut, Property Finder), Social Platforms (WhatsApp, Facebook), Others (Gmail, Google Ads Landing Page, Google Ads Lead Form, Google Campaign, Microsoft Ads). A card shows Connected only when the connection reports it, with Manage, Test Connection, Disconnect, last sync and errors. Failed incoming data is retried automatically, then shown for manual retry. Cards without a connector say "Not available yet".
+9. **Communication:** Templates, IVR (not available yet), Email Configuration.
+10. Settings are per company, changed only by the Admin, enforced by the server, kept with a change history (who, when, before, after) and protected against two people saving at once.
 
 ---
 

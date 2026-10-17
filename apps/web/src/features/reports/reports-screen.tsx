@@ -12,6 +12,7 @@ import { useCampaigns, useProjectList, useSources, useTeams, useUsers } from '@/
 import { useCan, useMe } from '@/core/session';
 import { ExportButton } from './export-button';
 import { ReportGrid } from './report-grid';
+import { useClientPolicy } from '@/features/global-config/policy';
 
 type Definition = Schemas['ReportDefinition'];
 
@@ -20,6 +21,8 @@ const MODULE_LABEL: Record<string, string> = { leads: 'Leads', marketing: 'Marke
 /** Pick a report, filter by date, source, campaign, team and agent, and export (SRS §8). */
 export function ReportsScreen() {
   const can = useCan();
+  // Lead exports follow Global Configuration › Leads › Export Leads (the API checks it too).
+  const policy = useClientPolicy();
   const me = useMe();
   const defs = useQuery({ queryKey: ['reports'], queryFn: async () => unwrap(await api.GET('/reports')).data });
   const [key, setKey] = useState<string | null>(null);
@@ -63,7 +66,7 @@ export function ReportsScreen() {
             </div>
           ))}
         </nav>
-        {current ? <ReportView key={current.key} def={current} canExport={can(current.module === 'attendance' ? 'attendance.export' : 'reports.export')} timeZone={me.data?.user.timezone} /> : <EmptyState title="No reports" />}
+        {current ? <ReportView key={current.key} def={current} canExport={current.module === 'attendance' ? can('attendance.export') : current.module === 'leads' ? can('leads.export') && policy.data?.exportLeads === true : can('reports.export')} timeZone={me.data?.user.timezone} /> : <EmptyState title="No reports" />}
       </div>
     </div>
   );

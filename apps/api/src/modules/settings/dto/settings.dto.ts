@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
 import { IsDateOnly, IsUuid } from '../../../core/http/validators';
-import { LEAD_SOURCE_TYPES, LeadSourceRow, LeadStageRow, ReasonRow, SettingRow } from '../settings.schema';
+import { LEAD_SOURCE_TYPES, LeadSourceRow, LeadStageRow, LeadSubstatusRow, ReasonRow, SettingRow } from '../settings.schema';
 
 const nullableUuid = { type: String, format: 'uuid', nullable: true } as const;
 const CATEGORIES = ['open', 'won', 'lost', 'invalid'] as const;
@@ -29,7 +29,7 @@ const REASON_TYPES = ['lost', 'invalid', 'reassignment'] as const;
 export class SettingDto {
   @ApiProperty() key!: string;
   @ApiProperty({ type: Object }) value!: Record<string, unknown>;
-  @ApiPropertyOptional({ format: 'date-time', readOnly: true }) updatedAt!: string;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true, readOnly: true, description: 'Empty while the default is used' }) updatedAt!: string | null;
 
   static from(r: SettingRow): SettingDto {
     return { key: r.key, value: r.value, updatedAt: r.updatedAt.toISOString() };
@@ -38,6 +38,32 @@ export class SettingDto {
 
 export class SettingList {
   @ApiProperty({ type: [SettingDto] }) data!: SettingDto[];
+}
+
+/** One change in a setting's history (Global Configuration §9). */
+export class SettingChangeDto {
+  @ApiProperty({ format: 'date-time' }) at!: string;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) userId!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) userName!: string | null;
+  @ApiPropertyOptional({ nullable: true }) before!: unknown;
+  @ApiPropertyOptional({ nullable: true }) after!: unknown;
+}
+
+export class SettingChangeList {
+  @ApiProperty({ type: [SettingChangeDto] }) data!: SettingChangeDto[];
+}
+
+/** GET /client-policy: the Global Configuration switches every screen follows (the API enforces them too). */
+export class ClientPolicyDto {
+  @ApiProperty() allowCopyPaste!: boolean;
+  @ApiProperty() exportLeads!: boolean;
+  @ApiProperty() sourceUpdate!: boolean;
+  @ApiProperty() pastDateSelection!: boolean;
+  @ApiProperty() mandatoryLocation!: boolean;
+  @ApiProperty() unassignedCommunication!: boolean;
+  @ApiProperty() dualOwnership!: boolean;
+  @ApiProperty({ pattern: '^[A-Z]{2}$' }) defaultCountry!: string;
+  @ApiProperty({ pattern: '^[A-Z]{3}$' }) defaultCurrency!: string;
 }
 
 export class UpdateSettingDto {
@@ -74,18 +100,32 @@ export class CurrencyCodes {
   @ApiProperty({ type: [String] }) data!: string[];
 }
 
-// ---- lead stages (components.schemas.LeadStage)
+// ---- lead statuses (components.schemas.LeadStage): the four fixed statuses Hot, Warm, Cold, Sale Done
 export class LeadStageDto {
   @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
-  @ApiProperty() key!: string;
+  @ApiProperty({ enum: ['hot', 'warm', 'cold', 'sale_done'] }) key!: string;
   @ApiProperty() name!: string;
   @ApiProperty({ enum: CATEGORIES }) category!: LeadStageRow['category'];
   @ApiProperty() sortOrder!: number;
   @ApiPropertyOptional({ readOnly: true }) isSystem!: boolean;
   @ApiPropertyOptional() isActive!: boolean;
+  @ApiProperty({ pattern: '^#[0-9a-fA-F]{6}$' }) color!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) description!: string | null;
+  @ApiProperty({ description: 'Moving a lead here needs a date and time' }) requiresScheduling!: boolean;
 
   static from(r: LeadStageRow): LeadStageDto {
-    return { id: r.id, key: r.key, name: r.name, category: r.category, sortOrder: r.sortOrder, isSystem: r.isSystem, isActive: r.isActive };
+    return {
+      id: r.id,
+      key: r.key,
+      name: r.name,
+      category: r.category,
+      sortOrder: r.sortOrder,
+      isSystem: r.isSystem,
+      isActive: r.isActive,
+      color: r.color,
+      description: r.description,
+      requiresScheduling: r.requiresScheduling,
+    };
   }
 }
 
@@ -94,15 +134,41 @@ export class LeadStagePage {
   @ApiProperty({ type: PageInfo }) page!: PageInfo;
 }
 
-/** POST and PATCH /lead-stages. key, name, category and sortOrder are required on create. */
-export class LeadStageInputDto {
-  @IsOptional() @IsUuid() id?: string;
-  @IsOptional() @IsBoolean() isSystem?: boolean;
-  @ApiPropertyOptional({ pattern: '^[a-z_]+$' }) @IsOptional() @Matches(/^[a-z_]+$/) @MaxLength(50) key?: string;
+// ---- substatuses (components.schemas.LeadSubstatus)
+export class LeadSubstatusDto {
+  @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
+  @ApiProperty({ format: 'uuid' }) stageId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() sortOrder!: number;
+  @ApiProperty() isActive!: boolean;
+  @ApiProperty() requiresScheduling!: boolean;
+
+  static from(r: LeadSubstatusRow): LeadSubstatusDto {
+    return { id: r.id, stageId: r.stageId, name: r.name, sortOrder: r.sortOrder, isActive: r.isActive, requiresScheduling: r.requiresScheduling };
+  }
+}
+
+export class LeadSubstatusList {
+  @ApiProperty({ type: [LeadSubstatusDto] }) data!: LeadSubstatusDto[];
+}
+
+export class SubstatusListQuery {
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() stageId?: string;
+}
+
+/** POST and PATCH /lead-substatuses. stageId and name are required on create. */
+export class LeadSubstatusInputDto {
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() stageId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(100) name?: string;
-  @ApiPropertyOptional({ enum: CATEGORIES }) @IsOptional() @IsIn(CATEGORIES) category?: LeadStageRow['category'];
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(1000) sortOrder?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requiresScheduling?: boolean;
+}
+
+/** PUT /lead-substatuses/order: the substatuses of one status in their new order. */
+export class SubstatusOrderDto {
+  @ApiProperty({ format: 'uuid' }) @IsUuid() stageId!: string;
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(100) @IsUuid({ each: true }) ids!: string[];
 }
 
 // ---- reasons (components.schemas.Reason)

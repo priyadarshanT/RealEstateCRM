@@ -20,6 +20,10 @@ export class LabelsService {
     return this.each(ids, async (id) => (await this.config.getStage(id)).name);
   }
 
+  async substatuses(ids: string[]): Promise<Map<string, string>> {
+    return this.each(ids, async (id) => (await this.config.getSubstatus(id)).name);
+  }
+
   async reasons(ids: string[]): Promise<Map<string, string>> {
     return this.each(ids, async (id) => (await this.config.getReason(id)).name);
   }

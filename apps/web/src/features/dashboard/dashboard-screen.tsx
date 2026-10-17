@@ -64,7 +64,7 @@ export function DashboardScreen() {
         { label: 'Overdue', value: <span className="text-danger">{k.overdue ?? 0}</span>, accent: '#c62828', onClick: () => openLeads({ tab: 'overdue' }) },
         { label: 'Re-enquired', value: (k.reEnquired ?? 0).toLocaleString(), accent: '#f2b33d' },
         { label: 'Meetings today', value: k.meetingsToday ?? 0, accent: '#15803d', onClick: () => router.push('/tasks') },
-        { label: 'Qualified', value: (k.qualified ?? 0).toLocaleString(), accent: '#15803d' },
+        { label: 'Hot leads', value: (k.qualified ?? 0).toLocaleString(), accent: '#e11d48' },
         { label: 'EOIs', value: k.eois ?? 0, accent: '#8b5cf6' },
         { label: 'Bookings', value: k.bookings ?? 0, accent: '#8b5cf6' },
         { label: 'Sales value', value: formatMoneyShort(k.salesValue, me.data?.tenant.baseCurrency), accent: '#15803d' },
@@ -126,7 +126,7 @@ export function DashboardScreen() {
             <ChartCard title="Leads by source" buckets={dash.data.bySource} option={pieOption(dash.data.bySource ?? [])} onClick={drill(dash.data.bySource ?? [])} />
             <ChartCard title="Funnel" buckets={dash.data.funnel} option={funnelOption(dash.data.funnel)} />
             <ChartCard title="Leads by agent" buckets={dash.data.byAgent} option={barOption(dash.data.byAgent ?? [])} onClick={drill(dash.data.byAgent ?? [])} />
-            <ChartCard title="Leads by stage" buckets={dash.data.byStage} option={pieOption(dash.data.byStage ?? [])} onClick={drill(dash.data.byStage ?? [])} />
+            <ChartCard title="Leads by status" buckets={dash.data.byStage} option={pieOption(dash.data.byStage ?? [])} onClick={drill(dash.data.byStage ?? [])} />
             <ChartCard title="Leads by project" buckets={dash.data.byProject} option={pieOption(dash.data.byProject ?? [])} onClick={drill(dash.data.byProject ?? [])} />
             <ChartCard
               title="Leads by campaign"
@@ -136,7 +136,7 @@ export function DashboardScreen() {
             />
           </div>
           <Card>
-            <CardHeader title="Leads, qualified, spend and sales over time" />
+            <CardHeader title="Leads, hot leads, spend and sales over time" />
             <CardBody>{(dash.data.trend ?? []).length ? <Chart option={trendOption(dash.data.trend)} className="h-64" /> : <EmptyState title="No data for this period" />}</CardBody>
           </Card>
           <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">

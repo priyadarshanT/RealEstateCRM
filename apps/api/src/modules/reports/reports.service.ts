@@ -7,7 +7,7 @@ import ExcelJS from 'exceljs';
 import { AuditService } from '../../core/audit/audit.service';
 import { DataScope, Principal } from '../../core/auth/principal';
 import { DbService } from '../../core/database/db.service';
-import { Problems } from '../../core/errors/problem';
+import { ProblemException, Problems } from '../../core/errors/problem';
 import { FilesService } from '../../core/files/files.service';
 import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagination';
 import { QueueService, TenantJob } from '../../core/queue/queue.service';
@@ -15,6 +15,7 @@ import { LabelsService } from '../dashboard/labels.service';
 import { EventsService } from '../events/events.service';
 import { dayAfter, dayStart } from '../../core/http/dates';
 import { exportPage, LeadReportingService, ReportFilters } from '../leads/lead-reporting.service';
+import { LeadsService } from '../leads/leads.service';
 import { OrganizationDirectory } from '../organization/directory.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -136,6 +137,7 @@ export class ReportsService implements OnModuleInit {
     attendance: AttendanceService,
     projects: ProjectsService,
     units: UnitsService,
+    private readonly leads: LeadsService,
   ) {
     this.reports = new Map(
       reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations, phase3: { deals, documents, commissions, counterparties, attendance, projects, units } }).map((r) => [r.key, r]),
@@ -170,6 +172,9 @@ export class ReportsService implements OnModuleInit {
   async requestExport(p: Principal, key: string, body: ExportRequestDto): Promise<ExportDto> {
     const report = this.find(key);
     if (!p.permissions.has(report.exportPermission) || !allowed(p, report)) throw Problems.forbidden('Only users allowed to export (Admin by default) can export.');
+    if (report.exportPermission === 'leads.export' && !(await this.leads.features()).export_leads) {
+      throw new ProblemException(403, 'EXPORT_DISABLED', 'Lead export is off', 'Exporting leads is turned off in Global Configuration › Leads.');
+    }
     const filters = cleanFilters(body.filters ?? {});
     checkPeriod(filters);
     const [row] = await this.db.current.insert(exportLogs).values({ tenantId: p.tenantId, userId: p.userId, reportKey: key, filters: { ...filters }, format: body.format }).returning();

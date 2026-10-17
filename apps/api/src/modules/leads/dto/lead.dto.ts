@@ -55,6 +55,7 @@ export class LeadDto {
   @ApiPropertyOptional(nullableUuid) teamId!: string | null;
   @ApiProperty({ format: 'uuid' }) stageId!: string;
   @ApiProperty({ enum: CATEGORIES }) stageCategory!: LeadRow['stageCategory'];
+  @ApiPropertyOptional(nullableUuid) substatusId!: string | null;
   @ApiPropertyOptional(nullableUuid) closeReasonId!: string | null;
   @ApiProperty({ minimum: 0, maximum: 100 }) score!: number;
   @ApiPropertyOptional({ type: String, nullable: true }) latestNote!: string | null;
@@ -63,6 +64,7 @@ export class LeadDto {
   @ApiProperty() enquiryCount!: number;
   @ApiPropertyOptional({ format: 'date-time' }) lastEnquiryAt!: string;
   @ApiPropertyOptional({ enum: ['owner', 'edit', 'view', 'scope'], readOnly: true }) access?: LeadAccess;
+  @ApiPropertyOptional({ readOnly: true, description: 'Phone and email are masked for this user (Global Configuration › Hide Lead Contact Info)' }) contactHidden?: boolean;
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true }) deletedAt!: string | null;
   @ApiProperty({ format: 'date-time', readOnly: true }) createdAt!: string;
   @ApiPropertyOptional({ format: 'date-time', readOnly: true }) updatedAt!: string;
@@ -91,6 +93,7 @@ export class LeadDto {
       teamId: l.teamId,
       stageId: l.stageId,
       stageCategory: l.stageCategory,
+      substatusId: l.substatusId,
       closeReasonId: l.closeReasonId,
       score: l.score,
       latestNote: l.latestNote,
@@ -112,13 +115,14 @@ export class LeadPage {
   @ApiProperty({ type: PageInfo }) page!: PageInfo & { total?: number };
 }
 
-export const LEAD_TABS = ['all', 'my', 'shared', 'team', 'unassigned', 'deleted', 'new', 'pending', 'scheduled', 'overdue', 'cold'] as const;
+export const LEAD_TABS = ['all', 'my', 'shared', 'team', 'unassigned', 'deleted', 'hot', 'warm', 'cold', 'sale_done', 'scheduled', 'overdue'] as const;
 export type LeadTab = (typeof LEAD_TABS)[number];
 
 export class LeadListQuery extends PageQuery {
   @ApiPropertyOptional({ enum: LEAD_TABS }) @IsOptional() @IsIn(LEAD_TABS) tab?: LeadTab;
   @ApiPropertyOptional({ description: 'Name, phone or email' }) @IsOptional() @IsString() @MaxLength(100) q?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() stageId?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() substatusId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() ownerUserId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() teamId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() projectId?: string;
@@ -162,6 +166,10 @@ export class LeadCreateDto extends LeadFields {
 /** components.schemas.LeadUpdate */
 export class LeadUpdateDto extends LeadFields {
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(200) fullName?: string;
+  @ApiPropertyOptional({ format: 'uuid', description: 'Only when Global Configuration › Lead Source Update is on; the original source stays in the enquiries' })
+  @IsOptional()
+  @IsUuid()
+  sourceId?: string;
   @ApiPropertyOptional({ format: 'date-time' }) @IsOptional() @IsDateString() nextFollowUpAt?: string;
   @ApiProperty({ description: 'Optimistic lock: send the version you read' }) @IsInt() @Min(1) version!: number;
 }
@@ -186,6 +194,7 @@ export class CheckExistingResult {
 // ---------------------------------------------------------------- actions
 export class StageChangeDto {
   @ApiProperty({ format: 'uuid' }) @IsUuid() stageId!: string;
+  @ApiPropertyOptional({ format: 'uuid', description: 'Required for Cold' }) @IsOptional() @IsUuid() substatusId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() reasonId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) note?: string;
   @ApiPropertyOptional({ format: 'date-time' }) @IsOptional() @IsDateString() nextFollowUpAt?: string;
@@ -257,6 +266,7 @@ export class BulkLeadActionDto {
   @ApiProperty({ enum: ['assign', 'stage', 'delete', 'restore'] }) @IsIn(['assign', 'stage', 'delete', 'restore']) action!: 'assign' | 'stage' | 'delete' | 'restore';
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() toUserId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() stageId?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() substatusId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() reasonId?: string;
 }
 

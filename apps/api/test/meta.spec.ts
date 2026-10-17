@@ -92,7 +92,7 @@ describe('Meta lead ads', () => {
     const tampered = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${state}x`).expect(302);
     expect(tampered.headers.location).toContain('error=invalid_state');
     const ok = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${encodeURIComponent(state)}`).expect(302);
-    expect(ok.headers.location).toBe(`http://localhost:3000/settings?tab=connections&connected=${integrationId}`);
+    expect(ok.headers.location).toBe(`http://localhost:3000/configuration?tab=integrations&connected=${integrationId}`);
     const again = await request(app.getHttpServer()).get(`/api/v1/oauth/meta/callback?code=good-code&state=${encodeURIComponent(state)}`).expect(302);
     expect(again.headers.location).toContain('error=invalid_state');
 

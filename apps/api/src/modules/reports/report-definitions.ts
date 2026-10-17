@@ -79,7 +79,8 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
     { key: 'campaign', label: 'Campaign', type: 'text' },
     { key: 'form', label: 'Form', type: 'text' },
     { key: 'agent', label: 'Agent', type: 'text' },
-    { key: 'stage', label: 'Stage', type: 'text' },
+    { key: 'stage', label: 'Status', type: 'text' },
+    { key: 'substatus', label: 'Substatus', type: 'text' },
     { key: 'reason', label: 'Reason', type: 'text' },
     { key: 'priority', label: 'Priority', type: 'text' },
     { key: 'score', label: 'Score', type: 'number' },
@@ -98,11 +99,12 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
     paged: true,
     async run(p, f, limit, offset) {
       const { rows, total } = await d.reporting.leadRows(p, f, await d.reporting.preset(preset), limit, offset);
-      const [sources, campaigns, users, stages, reasons] = await Promise.all([
+      const [sources, campaigns, users, stages, substatuses, reasons] = await Promise.all([
         d.labels.sources(rows.map((r) => r.sourceId)),
         d.labels.campaigns(rows.map((r) => r.campaignId ?? '')),
         d.labels.users(rows.map((r) => r.ownerUserId ?? '')),
         d.labels.stages(rows.map((r) => r.stageId)),
+        d.labels.substatuses(rows.map((r) => r.substatusId ?? '')),
         d.labels.reasons(rows.map((r) => r.closeReasonId ?? '')),
       ]);
       return {
@@ -116,6 +118,7 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
           form: r.formName,
           agent: r.ownerUserId ? (users.get(r.ownerUserId) ?? null) : 'Unassigned',
           stage: stages.get(r.stageId) ?? null,
+          substatus: r.substatusId ? (substatuses.get(r.substatusId) ?? null) : null,
           reason: r.closeReasonId ? (reasons.get(r.closeReasonId) ?? null) : null,
           priority: r.priority,
           score: r.score,
@@ -159,13 +162,13 @@ export function reportDefinitions(d: Deps): ReportDefinition[] {
     leadList('leads_scheduled', 'Scheduled leads', 'scheduled'),
     leadList('leads_overdue', 'Overdue leads', 'overdue'),
     leadList('leads_untouched', 'Untouched leads', 'untouched'),
-    leadList('leads_lost', 'Lost and invalid leads', 'lost'),
+    leadList('leads_lost', 'Cold leads', 'lost'),
     leadList('re_enquiries', 'Re-enquiries', 're_enquiries'),
     grouped('leads_by_source', 'Leads by source', 'source', (ids) => d.labels.sources(ids)),
     grouped('leads_by_project', 'Leads by project', 'project', (ids) => d.phase3.projects.names(ids)),
     grouped('leads_by_campaign', 'Leads by campaign', 'campaign', (ids) => d.labels.campaigns(ids)),
     grouped('leads_by_form', 'Leads by form', 'form', async (ids) => new Map(ids.map((i) => [i, i]))),
-    grouped('leads_by_stage', 'Leads by stage', 'stage', (ids) => d.labels.stages(ids)),
+    grouped('leads_by_stage', 'Leads by status', 'stage', (ids) => d.labels.stages(ids)),
     {
       key: 'marketing',
       name: 'Marketing: spend and cost per lead',

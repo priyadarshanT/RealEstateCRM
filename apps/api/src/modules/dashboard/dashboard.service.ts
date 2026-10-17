@@ -109,7 +109,11 @@ export class DashboardService {
       this.reporting.trend(p, f),
       this.marketing.spendByDay(f.from, f.to, f.sourceId, f.campaignId),
     ]);
-    const sold = (await this.deals.forReport(p, f)).filter((d) => d.stage === 'sold' && d.saleDate && (!f.from || d.saleDate >= f.from) && (!f.to || d.saleDate <= f.to));
+    const deals = await this.deals.forReport(p, f);
+    const inPeriod = (d: string | null) => !!d && (!f.from || d >= f.from) && (!f.to || d <= f.to);
+    const eois = deals.filter((d) => inPeriod(d.eoiDate)).length;
+    const bookings = deals.filter((d) => inPeriod(d.bookingDate)).length;
+    const sold = deals.filter((d) => d.stage === 'sold' && d.saleDate && (!f.from || d.saleDate >= f.from) && (!f.to || d.saleDate <= f.to));
     const salesValue = sold.reduce((n, d) => n + Number(d.saleValue), 0).toFixed(2);
     const unpaidInvoices = p.permissions.has('finance.create') ? await this.documents.unpaidSalesBalance(f) : ZERO;
     const salesByDay = new Map<string, number>();
@@ -124,7 +128,7 @@ export class DashboardService {
     const days = new Set([...trend.map((t) => t.date), ...spend.keys(), ...salesByDay.keys()]);
     const trendOf = new Map(trend.map((t) => [t.date, t]));
     return {
-      kpis: { ...kpis, meetingsToday, salesValue, unpaidInvoices },
+      kpis: { ...kpis, eois, bookings, meetingsToday, salesValue, unpaidInvoices },
       bySource: bySource.map((b) => ({ key: b.key, label: sources.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, sourceId: b.key } })),
       byProject: byProject.map((b) => ({ key: b.key, label: projectNames.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, projectId: b.key } })),
       byStage: byStage.map((b) => ({ key: b.key, label: stages.get(b.key) ?? b.key, count: b.count, drillDown: { ...base, stageId: b.key } })),

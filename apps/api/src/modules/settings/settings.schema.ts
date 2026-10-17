@@ -36,6 +36,21 @@ export const leadStages = pgTable('lead_stages', {
   sortOrder: smallint('sort_order').notNull(),
   isSystem: boolean('is_system').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
+  color: text('color').notNull(),
+  description: text('description'),
+  requiresScheduling: boolean('requires_scheduling').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+});
+
+/** Substatuses under the four fixed statuses (migration 0006); only the Admin manages them. */
+export const leadSubstatuses = pgTable('lead_substatuses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  stageId: uuid('stage_id').notNull(),
+  name: text('name').notNull(),
+  sortOrder: smallint('sort_order').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  requiresScheduling: boolean('requires_scheduling').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 });
 
@@ -79,6 +94,7 @@ export const leadSources = pgTable('lead_sources', {
 });
 
 export type LeadStageRow = typeof leadStages.$inferSelect;
+export type LeadSubstatusRow = typeof leadSubstatuses.$inferSelect;
 export type ReasonRow = typeof reasons.$inferSelect;
 export type LeadSourceRow = typeof leadSources.$inferSelect;
 export type SettingRow = typeof tenantSettings.$inferSelect;

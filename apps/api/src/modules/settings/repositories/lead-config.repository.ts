@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, eq, sql, SQL } from 'drizzle-orm';
 import { DbService } from '../../../core/database/db.service';
 import { decodeCursor } from '../../../core/http/pagination';
-import { LeadSourceRow, leadSources, LeadStageRow, leadStages, ReasonRow, reasons } from '../settings.schema';
+import { LeadSourceRow, leadSources, LeadStageRow, leadStages, LeadSubstatusRow, leadSubstatuses, ReasonRow, reasons } from '../settings.schema';
 
-export type StageValues = Partial<Pick<LeadStageRow, 'key' | 'name' | 'category' | 'sortOrder' | 'isActive'>>;
+export type SubstatusValues = Partial<Pick<LeadSubstatusRow, 'name' | 'sortOrder' | 'isActive' | 'requiresScheduling'>>;
 export type ReasonValues = Partial<Pick<ReasonRow, 'type' | 'key' | 'name' | 'isActive'>>;
 export type SourceValues = Partial<Pick<LeadSourceRow, 'type' | 'name' | 'integrationId' | 'qualityScore' | 'isActive'>>;
 
@@ -38,22 +38,36 @@ export class LeadConfigRepository {
     return row;
   }
 
-  async createStage(values: Required<Pick<LeadStageRow, 'key' | 'name' | 'category' | 'sortOrder'>> & StageValues, tenantId: string): Promise<LeadStageRow> {
-    const [row] = await this.db.current.insert(leadStages).values({ ...values, tenantId, isSystem: false }).returning();
+  // ---- substatuses
+  async listSubstatuses(stageId?: string): Promise<LeadSubstatusRow[]> {
+    return this.db.current
+      .select()
+      .from(leadSubstatuses)
+      .where(stageId ? eq(leadSubstatuses.stageId, stageId) : undefined)
+      .orderBy(asc(leadSubstatuses.stageId), asc(leadSubstatuses.sortOrder), asc(leadSubstatuses.name));
+  }
+
+  async findSubstatus(id: string): Promise<LeadSubstatusRow | undefined> {
+    const [row] = await this.db.current.select().from(leadSubstatuses).where(eq(leadSubstatuses.id, id)).limit(1);
+    return row;
+  }
+
+  async createSubstatus(values: Pick<LeadSubstatusRow, 'stageId' | 'name' | 'sortOrder'> & SubstatusValues, tenantId: string): Promise<LeadSubstatusRow> {
+    const [row] = await this.db.current.insert(leadSubstatuses).values({ ...values, tenantId }).returning();
     return row!;
   }
 
-  async updateStage(id: string, values: StageValues, expectedVersion?: string): Promise<LeadStageRow | undefined> {
+  async updateSubstatus(id: string, values: SubstatusValues, expectedVersion?: string): Promise<LeadSubstatusRow | undefined> {
     const [row] = await this.db.current
-      .update(leadStages)
+      .update(leadSubstatuses)
       .set(values)
-      .where(and(eq(leadStages.id, id), expectedVersion ? eq(leadStages.updatedAt, expectedVersion) : undefined))
+      .where(and(eq(leadSubstatuses.id, id), expectedVersion ? eq(leadSubstatuses.updatedAt, expectedVersion) : undefined))
       .returning();
     return row;
   }
 
-  async deleteStage(id: string): Promise<void> {
-    await this.db.current.delete(leadStages).where(eq(leadStages.id, id));
+  async deleteSubstatus(id: string): Promise<void> {
+    await this.db.current.delete(leadSubstatuses).where(eq(leadSubstatuses.id, id));
   }
 
   // ---- reasons

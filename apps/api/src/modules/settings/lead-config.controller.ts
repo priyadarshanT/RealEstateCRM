@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { RequirePermission } from '../../core/auth/decorators';
@@ -9,12 +9,16 @@ import {
   LeadSourceInputDto,
   LeadSourcePage,
   LeadStageDto,
-  LeadStageInputDto,
   LeadStagePage,
+  LeadSubstatusDto,
+  LeadSubstatusInputDto,
+  LeadSubstatusList,
   ReasonDto,
   ReasonInputDto,
   ReasonListQuery,
   ReasonPage,
+  SubstatusListQuery,
+  SubstatusOrderDto,
 } from './dto/settings.dto';
 import { LeadConfigService } from './lead-config.service';
 
@@ -24,58 +28,90 @@ import { LeadConfigService } from './lead-config.service';
 export class LeadStagesController {
   constructor(private readonly config: LeadConfigService) {}
 
+  /** The four fixed lead statuses Hot, Warm, Cold, Sale Done (Global Configuration › Manage Status). */
   @Get()
   @RequirePermission('leads.view')
-  @ApiOperation({ operationId: 'listLeadStages', summary: 'List lead stages' })
+  @ApiOperation({ operationId: 'listLeadStages', summary: 'List lead statuses' })
   @ApiOkResponse({ type: LeadStagePage })
   list(@Query() query: PageQuery): Promise<LeadStagePage> {
     return this.config.listStages(query.limit, query.cursor);
   }
 
+  @Get(':id')
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'getLeadStage', summary: 'Get a lead status' })
+  @ApiOkResponse({ type: LeadStageDto })
+  async get(@Param('id', ParseUUIDPipe) id: string): Promise<LeadStageDto> {
+    return LeadStageDto.from(await this.config.getStage(id));
+  }
+}
+
+@ApiTags('Settings')
+@ApiBearerAuth('bearer')
+@Controller('lead-substatuses')
+export class LeadSubstatusesController {
+  constructor(private readonly config: LeadConfigService) {}
+
+  @Get()
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'listLeadSubstatuses', summary: 'List lead substatuses' })
+  @ApiOkResponse({ type: LeadSubstatusList })
+  async list(@Query() query: SubstatusListQuery): Promise<LeadSubstatusList> {
+    return { data: (await this.config.listSubstatuses(query.stageId)).map(LeadSubstatusDto.from) };
+  }
+
   @Post()
   @RequirePermission('settings.manage')
-  @ApiOperation({ operationId: 'createLeadStage', summary: 'Create a lead stage' })
+  @ApiOperation({ operationId: 'createLeadSubstatus', summary: 'Add a substatus' })
   @ApiHeader({ name: 'Idempotency-Key', required: false })
-  @ApiCreatedResponse({ type: LeadStageDto })
-  async create(@Body() body: LeadStageInputDto, @Res({ passthrough: true }) res: Response): Promise<LeadStageDto> {
-    const stage = await this.config.createStage(body);
-    res.setHeader('ETag', toEtag(stage.updatedAt));
-    return LeadStageDto.from(stage);
+  @ApiCreatedResponse({ type: LeadSubstatusDto })
+  async create(@Body() body: LeadSubstatusInputDto, @Res({ passthrough: true }) res: Response): Promise<LeadSubstatusDto> {
+    const row = await this.config.createSubstatus(body);
+    res.setHeader('ETag', toEtag(row.updatedAt));
+    return LeadSubstatusDto.from(row);
+  }
+
+  @Put('order')
+  @RequirePermission('settings.manage')
+  @ApiOperation({ operationId: 'reorderLeadSubstatuses', summary: 'Reorder the substatuses of a status' })
+  @ApiOkResponse({ type: LeadSubstatusList })
+  async reorder(@Body() body: SubstatusOrderDto): Promise<LeadSubstatusList> {
+    return { data: (await this.config.reorderSubstatuses(body)).map(LeadSubstatusDto.from) };
   }
 
   @Get(':id')
   @RequirePermission('leads.view')
-  @ApiOperation({ operationId: 'getLeadStage', summary: 'Get a lead stage' })
-  @ApiOkResponse({ type: LeadStageDto })
-  async get(@Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response): Promise<LeadStageDto> {
-    const stage = await this.config.getStage(id);
-    res.setHeader('ETag', toEtag(stage.updatedAt));
-    return LeadStageDto.from(stage);
+  @ApiOperation({ operationId: 'getLeadSubstatus', summary: 'Get a substatus' })
+  @ApiOkResponse({ type: LeadSubstatusDto })
+  async get(@Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response): Promise<LeadSubstatusDto> {
+    const row = await this.config.getSubstatus(id);
+    res.setHeader('ETag', toEtag(row.updatedAt));
+    return LeadSubstatusDto.from(row);
   }
 
   @Patch(':id')
   @RequirePermission('settings.manage')
-  @ApiOperation({ operationId: 'updateLeadStage', summary: 'Update a lead stage' })
+  @ApiOperation({ operationId: 'updateLeadSubstatus', summary: 'Rename, turn off or change a substatus' })
   @ApiHeader({ name: 'If-Match', required: false })
-  @ApiOkResponse({ type: LeadStageDto })
+  @ApiOkResponse({ type: LeadSubstatusDto })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: LeadStageInputDto,
+    @Body() body: LeadSubstatusInputDto,
     @Headers('if-match') ifMatch: string | undefined,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<LeadStageDto> {
-    const stage = await this.config.updateStage(id, body, parseIfMatch(ifMatch));
-    res.setHeader('ETag', toEtag(stage.updatedAt));
-    return LeadStageDto.from(stage);
+  ): Promise<LeadSubstatusDto> {
+    const row = await this.config.updateSubstatus(id, body, parseIfMatch(ifMatch));
+    res.setHeader('ETag', toEtag(row.updatedAt));
+    return LeadSubstatusDto.from(row);
   }
 
   @Delete(':id')
   @HttpCode(204)
   @RequirePermission('settings.manage')
-  @ApiOperation({ operationId: 'deleteLeadStage', summary: 'Delete a lead stage' })
+  @ApiOperation({ operationId: 'deleteLeadSubstatus', summary: 'Delete an unused substatus' })
   @ApiNoContentResponse({ description: 'Done' })
   delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.config.deleteStage(id);
+    return this.config.deleteSubstatus(id);
   }
 }
 

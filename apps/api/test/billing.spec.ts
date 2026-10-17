@@ -107,7 +107,7 @@ describe('sign-up, billing, owner console', () => {
       const me = await admin.get('/api/v1/me').expect(200);
       expect(me.body).toMatchObject({ user: { status: 'active' }, tenant: { name: 'Palm Homes Real Estate', verificationStatus: 'pending' }, dataScope: 'company' });
       expect(me.body.permissions).toEqual(expect.arrayContaining(['billing.manage', 'leads.export']));
-      expect((await admin.get('/api/v1/lead-stages').expect(200)).body.data.length).toBeGreaterThan(10);
+      expect((await admin.get('/api/v1/lead-stages').expect(200)).body.data.length).toBe(4);
 
       const subscription = await admin.get('/api/v1/billing/subscription').expect(200);
       expect(subscription.body).toMatchObject({
@@ -184,7 +184,7 @@ describe('sign-up, billing, owner console', () => {
       const blocked = await admin.post('/api/v1/leads').send({ ...lead, phonePrimary: '+971558880002' }).expect(402);
       expect(blocked.body.code).toBe('SUBSCRIPTION_READ_ONLY');
       await admin.get('/api/v1/leads').expect(200);
-      await admin.post('/api/v1/reports/leads/exports').send({ format: 'csv' }).expect(202);
+      await admin.post('/api/v1/reports/funnel/exports').send({ format: 'csv' }).expect(202);
       await admin.post('/api/v1/billing/card-setup').expect(201);
     });
 

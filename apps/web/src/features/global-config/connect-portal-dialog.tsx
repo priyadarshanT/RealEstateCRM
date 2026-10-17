@@ -3,21 +3,24 @@
 import { Alert, Button, Dialog, DialogContent, Field, Input, Select } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError, errorMessage, unwrap } from '@/core/api';
 import { useSources } from '@/core/lookups';
 
 export const PORTALS = { property_finder: 'Property Finder', bayut: 'Bayut', dubizzle: 'Dubizzle' } as const;
-type Portal = keyof typeof PORTALS;
+export type Portal = keyof typeof PORTALS;
 
 /**
  * Property Finder, Bayut or Dubizzle (SRS §11.1): leads arrive by webhook with the shared secret agreed with the
  * portal, or by lead email to the inbound address. The secret goes to the secret store and is never shown again.
  */
-export function ConnectPortalDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ConnectPortalDialog({ open, initial, onClose }: { open: boolean; initial?: Portal; onClose: () => void }) {
   const qc = useQueryClient();
   const sources = useSources();
-  const [provider, setProvider] = useState<Portal>('property_finder');
+  const [provider, setProvider] = useState<Portal>(initial ?? 'property_finder');
+  useEffect(() => {
+    if (open && initial) setProvider(initial);
+  }, [open, initial]);
   const [f, setF] = useState<Record<string, string>>({});
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
   const connect = useMutation({
@@ -43,7 +46,7 @@ export function ConnectPortalDialog({ open, onClose }: { open: boolean; onClose:
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent title="Connect a property portal">
+      <DialogContent title={initial ? `Connect ${PORTALS[initial]}` : 'Connect a property portal'}>
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -51,7 +54,7 @@ export function ConnectPortalDialog({ open, onClose }: { open: boolean; onClose:
             connect.mutate();
           }}
         >
-          <Field label="Portal">
+          <Field label="Portal" className={initial ? 'hidden' : undefined}>
             <Select value={provider} onChange={(e) => setProvider(e.target.value as Portal)}>
               {(Object.keys(PORTALS) as Portal[]).map((p) => (
                 <option key={p} value={p}>

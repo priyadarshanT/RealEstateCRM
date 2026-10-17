@@ -4,7 +4,7 @@ import { Alert, Button, Dialog, DialogContent, Field, Select } from '@crm/ui';
 import type { Schemas } from '@crm/contracts';
 import { useState } from 'react';
 import { errorMessage } from '@/core/api';
-import { useColleagues, useReasons, useStages } from '@/core/lookups';
+import { useColleagues, useReasons, useStages, useSubstatuses } from '@/core/lookups';
 import { useCan } from '@/core/session';
 import { useBulkLeads } from './leads-api';
 
@@ -44,7 +44,7 @@ export function BulkBar({ ids, deletedTab, onDone }: { ids: string[]; deletedTab
           ) : null}
           {can('leads.edit') ? (
             <Button variant="link" size="sm" onClick={() => setAction('stage')}>
-              Change stage
+              Change status
             </Button>
           ) : null}
           {can('leads.delete') ? (
@@ -84,14 +84,16 @@ function BulkDialog({
   const [toUserId, setToUserId] = useState('');
   const [stageId, setStageId] = useState('');
   const [reasonId, setReasonId] = useState('');
+  const [substatusId, setSubstatusId] = useState('');
   const stage = stages.data?.find((s) => s.id === stageId);
-  // SRS §2.21: a reason is required for Lost, Invalid and reassignment.
-  const reasonType = action === 'assign' ? 'reassignment' : stage?.category === 'lost' ? 'lost' : stage?.category === 'invalid' ? 'invalid' : undefined;
-  const reasons = useReasons(reasonType);
-  const needsReason = !!reasonType;
+  const substatuses = (useSubstatuses().data ?? []).filter((x) => x.stageId === stageId && x.isActive);
+  // A reason is required for reassignment; Cold needs a substatus.
+  const reasons = useReasons('reassignment');
+  const needsReason = action === 'assign';
+  const needsSub = action === 'stage' && stage?.category !== 'open' && stage?.category !== 'won' && !!stage;
 
-  const title = action === 'assign' ? `Assign ${count} leads` : action === 'stage' ? `Change stage of ${count} leads` : `Delete ${count} leads`;
-  const ready = action === 'delete' || (action === 'assign' ? !!toUserId : !!stageId) && (!needsReason || !!reasonId);
+  const title = action === 'assign' ? `Assign ${count} leads` : action === 'stage' ? `Change status of ${count} leads` : `Delete ${count} leads`;
+  const ready = action === 'delete' || ((action === 'assign' ? !!toUserId : !!stageId) && (!needsReason || !!reasonId) && (!needsSub || !!substatusId));
 
   return (
     <Dialog open={!!action} onOpenChange={(v) => !v && onClose()}>
@@ -110,9 +112,9 @@ function BulkDialog({
             </Field>
           ) : null}
           {action === 'stage' ? (
-            <Field label="New stage">
-              <Select value={stageId} onChange={(e) => setStageId(e.target.value)}>
-                <option value="">Choose a stage</option>
+            <Field label="New status">
+              <Select value={stageId} onChange={(e) => (setStageId(e.target.value), setSubstatusId(''))}>
+                <option value="">Choose a status</option>
                 {stages.data
                   ?.filter((s) => s.isActive !== false)
                   .map((s) => (
@@ -120,6 +122,18 @@ function BulkDialog({
                       {s.name}
                     </option>
                   ))}
+              </Select>
+            </Field>
+          ) : null}
+          {action === 'stage' && substatuses.length ? (
+            <Field label={needsSub ? 'Substatus *' : 'Substatus'}>
+              <Select value={substatusId} onChange={(e) => setSubstatusId(e.target.value)}>
+                <option value="">{needsSub ? 'Choose a substatus' : 'None'}</option>
+                {substatuses.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
               </Select>
             </Field>
           ) : null}
@@ -145,7 +159,7 @@ function BulkDialog({
               disabled={!ready || busy}
               onClick={() =>
                 action &&
-                onRun({ action, ...(toUserId ? { toUserId } : {}), ...(stageId ? { stageId } : {}), ...(reasonId ? { reasonId } : {}) })
+                onRun({ action, ...(toUserId ? { toUserId } : {}), ...(stageId ? { stageId } : {}), ...(substatusId ? { substatusId } : {}), ...(reasonId ? { reasonId } : {}) })
               }
             >
               {busy ? 'Working…' : 'Apply'}

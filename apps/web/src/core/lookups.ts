@@ -17,6 +17,15 @@ export function useStages() {
   });
 }
 
+/** Substatuses under Hot, Warm, Cold and Sale Done (Global Configuration › Manage Status). */
+export function useSubstatuses() {
+  return useQuery({
+    queryKey: ['lead-substatuses'],
+    staleTime: LONG,
+    queryFn: async () => unwrap(await api.GET('/lead-substatuses')).data.sort((a, b) => a.sortOrder - b.sortOrder),
+  });
+}
+
 export function useSources() {
   return useQuery({
     queryKey: ['lead-sources'],

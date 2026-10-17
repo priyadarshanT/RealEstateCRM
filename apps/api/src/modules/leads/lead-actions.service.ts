@@ -64,28 +64,46 @@ export class LeadActionsService implements OnModuleInit {
     return this.leads.toDto(after, access);
   }
 
-  /** Moves a lead to a stage with the rules of SRS §2.19–2.22. Also used for automatic changes (re-enquiry reopen). */
+  /**
+   * Moves a lead to a status and substatus (Hot, Warm, Cold, Sale Done; Global Configuration › Manage Status).
+   * Cold needs a substatus; Hot and Warm need a follow-up date; a substatus marked "requires scheduling" needs a new
+   * date and time, which may not be in the past unless Enable Past Date Selection is on. Also used for automatic
+   * changes (re-enquiry reopen).
+   */
   async applyStage(lead: LeadRow, body: StageChangeDto, actorUserId: string | null, automatic: boolean): Promise<LeadRow> {
     const stage = await this.config.getStage(body.stageId).catch(() => undefined);
-    if (!stage || !stage.isActive) throw Problems.validation([{ field: 'stageId', message: 'unknown or inactive stage' }]);
-    if (stage.id === lead.stageId) return lead;
+    if (!stage || !stage.isActive) throw Problems.validation([{ field: 'stageId', message: 'unknown or inactive status' }]);
+    const substatus = body.substatusId ? await this.config.getSubstatus(body.substatusId).catch(() => undefined) : undefined;
+    if (body.substatusId && (!substatus || substatus.stageId !== stage.id || !substatus.isActive)) {
+      throw Problems.validation([{ field: 'substatusId', message: `choose an active substatus of ${stage.name}` }]);
+    }
+    const substatusId = substatus?.id ?? null;
+    if (stage.id === lead.stageId && substatusId === lead.substatusId && !body.nextFollowUpAt) return lead;
 
     const closing = stage.category === 'lost' || stage.category === 'invalid';
-    if (closing) {
-      if (!body.reasonId) throw LeadErrors.reasonRequired(`A reason is required to move a lead to ${stage.name}.`);
+    if (closing && !substatusId) throw LeadErrors.reasonRequired(`Choose a substatus to move a lead to ${stage.name}.`);
+    if (body.reasonId) {
       const reason = await this.config.getReason(body.reasonId).catch(() => undefined);
-      if (!reason || !reason.isActive || reason.type !== stage.category) {
-        throw Problems.validation([{ field: 'reasonId', message: `choose an active ${stage.category} reason` }]);
+      if (!closing || !reason || !reason.isActive || reason.type !== stage.category) {
+        throw Problems.validation([{ field: 'reasonId', message: 'a reason only goes with a closed status' }]);
       }
     }
-    const nextFollowUpAt = body.nextFollowUpAt ? new Date(body.nextFollowUpAt) : lead.nextFollowUpAt;
+    if (stage.category !== 'open' && body.nextFollowUpAt) {
+      throw Problems.validation([{ field: 'nextFollowUpAt', message: `${stage.name} leads are not scheduled` }]);
+    }
+    if (substatus?.requiresScheduling && !body.nextFollowUpAt) {
+      throw Problems.validation([{ field: 'nextFollowUpAt', message: `${substatus.name} needs a date and time` }]);
+    }
+    if (body.nextFollowUpAt && !automatic) await this.leads.assertDateAllowed(body.nextFollowUpAt, 'nextFollowUpAt');
+    const nextFollowUpAt = body.nextFollowUpAt ? new Date(body.nextFollowUpAt) : stage.category === 'open' ? lead.nextFollowUpAt : null;
     if (stage.category === 'open' && lead.ownerUserId && !nextFollowUpAt) throw LeadErrors.nextActionRequired();
 
     const now = new Date();
     const after = (await this.repo.update(lead.id, {
       stageId: stage.id,
       stageCategory: stage.category,
-      closeReasonId: closing ? body.reasonId! : null,
+      substatusId,
+      closeReasonId: closing ? (body.reasonId ?? null) : null,
       closeNote: closing ? (body.note ?? null) : null,
       closedAt: stage.category === 'open' ? null : (lead.closedAt ?? now),
       nextFollowUpAt,
@@ -96,14 +114,17 @@ export class LeadActionsService implements OnModuleInit {
       leadId: lead.id,
       fromStageId: lead.stageId,
       toStageId: stage.id,
-      reasonId: closing ? body.reasonId! : null,
+      toSubstatusId: substatusId,
+      reasonId: closing ? (body.reasonId ?? null) : null,
       note: body.note ?? null,
       isAutomatic: automatic,
       changedBy: actorUserId,
     });
     const from = await this.config.getStage(lead.stageId);
-    await this.repo.addActivity(lead.id, { type: 'stage_change', summary: `Stage: ${from.name} → ${stage.name}`, body: body.note ?? null, actorUserId });
-    await this.audit.record('update', 'leads', lead.id, { stageId: [lead.stageId, stage.id] });
+    const fromSub = lead.substatusId ? await this.config.getSubstatus(lead.substatusId).catch(() => undefined) : undefined;
+    const label = (name: string, sub?: { name: string }) => (sub ? `${name} · ${sub.name}` : name);
+    await this.repo.addActivity(lead.id, { type: 'stage_change', summary: `Status: ${label(from.name, fromSub)} → ${label(stage.name, substatus)}`, body: body.note ?? null, actorUserId });
+    await this.audit.record('update', 'leads', lead.id, { stageId: [lead.stageId, stage.id], substatusId: [lead.substatusId, substatusId] });
     await this.events.publish('lead.stage_changed', { tenantId: lead.tenantId, leadId: lead.id, fromStageId: lead.stageId, toStageId: stage.id, category: stage.category });
     if (!automatic) await this.leads.recordAction(lead.id, actorUserId);
     return (await this.repo.find(lead.id))!;
@@ -245,7 +266,7 @@ export class LeadActionsService implements OnModuleInit {
             break;
           }
           case 'stage':
-            await this.changeStage(p, leadId, { stageId: body.stageId!, reasonId: body.reasonId });
+            await this.changeStage(p, leadId, { stageId: body.stageId!, ...(body.substatusId ? { substatusId: body.substatusId } : {}), ...(body.reasonId ? { reasonId: body.reasonId } : {}) });
             break;
           case 'delete':
             await this.leads.remove(p, leadId);

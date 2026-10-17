@@ -375,7 +375,7 @@ export interface paths {
         };
         /**
          * List settings
-         * @description Keys: leads.response_time, leads.scoring, finance.numbering, …
+         * @description Global Configuration. Keys: general.preferences, security.policy, leads.features, leads.response_time, leads.scoring, finance.numbering. Settings never saved are listed with their default and an empty updatedAt.
          *
          *     **Permission:** `settings.manage`
          */
@@ -395,12 +395,60 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get setting
+         * @description The saved value, or the default. The ETag is used as If-Match when saving.
+         *
+         *     **Permission:** `settings.manage`
+         */
+        get: operations["getSetting"];
         /**
          * Update setting
-         * @description **Permission:** `settings.manage`
+         * @description With If-Match, a change saved by someone else first answers 409 VERSION_CONFLICT. Every change is written to the audit log with the value before and after.
+         *
+         *     **Permission:** `settings.manage`
          */
         put: operations["updateSetting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/{key}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Change history of a setting
+         * @description **Permission:** `settings.manage`
+         */
+        get: operations["listSettingHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global Configuration switches for the screens
+         * @description Any signed-in user. The values the screens follow to hide what is turned off (the API enforces the same switches).
+         */
+        get: operations["getClientPolicy"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -416,16 +464,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List lead stages
-         * @description **Permission:** `leads.view`
+         * List lead statuses
+         * @description The four fixed statuses Hot, Warm, Cold and Sale Done (Global Configuration › Manage Status). They cannot be added or deleted.
+         *
+         *     **Permission:** `leads.view`
          */
         get: operations["listLeadStages"];
         put?: never;
-        /**
-         * Create lead stage
-         * @description **Permission:** `settings.manage`
-         */
-        post: operations["createLeadStage"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -440,24 +486,92 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get lead stage
+         * Get lead status
          * @description **Permission:** `leads.view`
          */
         get: operations["getLeadStage"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-substatuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         /**
-         * Delete lead stage
+         * List lead substatuses
+         * @description **Permission:** `leads.view`
+         */
+        get: operations["listLeadSubstatuses"];
+        put?: never;
+        /**
+         * Add a substatus
+         * @description Names are unique per status (ignoring case). Only the Admin manages substatuses.
+         *
+         *     **Permission:** `settings.manage`
+         */
+        post: operations["createLeadSubstatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-substatuses/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the substatuses of a status
          * @description **Permission:** `settings.manage`
          */
-        delete: operations["deleteLeadStage"];
+        put: operations["reorderLeadSubstatuses"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-substatuses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a substatus
+         * @description **Permission:** `leads.view`
+         */
+        get: operations["getLeadSubstatus"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unused substatus
+         * @description A substatus a lead has used answers 409; turn it off instead.
+         *
+         *     **Permission:** `settings.manage`
+         */
+        delete: operations["deleteLeadSubstatus"];
         options?: never;
         head?: never;
         /**
-         * Update lead stage
+         * Rename, turn off or change a substatus
          * @description **Permission:** `settings.manage`
          */
-        patch: operations["updateLeadStage"];
+        patch: operations["updateLeadSubstatus"];
         trace?: never;
     };
     "/reasons": {
@@ -4761,9 +4875,29 @@ export interface components {
             value: {
                 [key: string]: unknown;
             };
-            /** Format: date-time */
-            readonly updatedAt?: string;
+            /** @description Empty while the default is used */
+            readonly updatedAt?: string | null;
         };
+        ClientPolicy: {
+            allowCopyPaste: boolean;
+            exportLeads: boolean;
+            sourceUpdate: boolean;
+            pastDateSelection: boolean;
+            mandatoryLocation: boolean;
+            unassignedCommunication: boolean;
+            dualOwnership: boolean;
+            defaultCountry: string;
+            defaultCurrency: string;
+        };
+        SettingChange: {
+            /** Format: date-time */
+            at: string;
+            userId?: string | null;
+            userName?: string | null;
+            before?: unknown;
+            after?: unknown;
+        };
+        /** @description One of the four fixed lead statuses: hot, warm (open), cold (closed, needs a substatus), sale_done (won). */
         LeadStage: {
             /** Format: uuid */
             readonly id: string;
@@ -4774,6 +4908,30 @@ export interface components {
             sortOrder: number;
             readonly isSystem?: boolean;
             isActive?: boolean;
+            color: string;
+            description?: string | null;
+            /** @description Moving a lead here needs a date and time */
+            requiresScheduling: boolean;
+        };
+        LeadSubstatus: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            stageId: string;
+            name: string;
+            sortOrder: number;
+            isActive: boolean;
+            /** @description Choosing it needs a date and time */
+            requiresScheduling: boolean;
+        };
+        /** @description stageId and name are required on create; the status of a substatus cannot change. */
+        LeadSubstatusInput: {
+            /** Format: uuid */
+            stageId?: string;
+            name?: string;
+            sortOrder?: number;
+            isActive?: boolean;
+            requiresScheduling?: boolean;
         };
         Reason: {
             /** Format: uuid */
@@ -4837,6 +4995,11 @@ export interface components {
         };
         LeadUpdate: {
             fullName?: string;
+            /**
+             * Format: uuid
+             * @description Only when Global Configuration › Lead Source Update is on
+             */
+            sourceId?: string;
             /** @example +971501234567 */
             phonePrimary?: string;
             /** @example +971501234567 */
@@ -4912,7 +5075,10 @@ export interface components {
             stageId: string;
             /** @enum {string} */
             stageCategory: "open" | "won" | "lost" | "invalid";
+            substatusId?: string | null;
             closeReasonId?: string | null;
+            /** @description Phone and email are masked for this user (Hide Lead Contact Info) */
+            readonly contactHidden?: boolean;
             score: number;
             latestNote?: string | null;
             nextFollowUpAt?: string | null;
@@ -4940,10 +5106,12 @@ export interface components {
             ownerName?: string | null;
             stageName?: string;
         };
-        /** @description reasonId is required when the stage category is lost or invalid */
+        /** @description substatusId is required for Cold; a substatus that requires scheduling needs nextFollowUpAt, which may not be in the past unless Enable Past Date Selection is on. */
         StageChange: {
             /** Format: uuid */
             stageId: string;
+            /** Format: uuid */
+            substatusId?: string;
             /** Format: uuid */
             reasonId?: string;
             note?: string;
@@ -5036,6 +5204,8 @@ export interface components {
             toUserId?: string;
             /** Format: uuid */
             stageId?: string;
+            /** Format: uuid */
+            substatusId?: string;
             /** Format: uuid */
             reasonId?: string;
         };
@@ -7248,10 +7418,41 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
-    updateSetting: {
+    getSetting: {
         parameters: {
             query?: never;
             header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Setting"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    updateSetting: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional ETag (version) for optimistic locking */
+                "If-Match"?: components["parameters"]["IfMatch"];
+            };
             path: {
                 key: string;
             };
@@ -7270,6 +7471,7 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7280,7 +7482,59 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listSettingHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SettingChange"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    getClientPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooMany"];
         };
     };
@@ -7315,39 +7569,6 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
-    createLeadStage: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Optional. Retrying a POST with the same key returns the first result instead of creating a duplicate. */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LeadStage"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeadStage"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["Unprocessable"];
-            429: components["responses"]["TooMany"];
-        };
-    };
     getLeadStage: {
         parameters: {
             query?: never;
@@ -7375,7 +7596,130 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
-    deleteLeadStage: {
+    listLeadSubstatuses: {
+        parameters: {
+            query?: {
+                stageId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadSubstatus"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    createLeadSubstatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying a POST with the same key returns the first result instead of creating a duplicate. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeadSubstatusInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadSubstatus"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    reorderLeadSubstatuses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    stageId: string;
+                    /** @description Every substatus of the status, once, in the new order */
+                    ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadSubstatus"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    getLeadSubstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadSubstatus"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    deleteLeadSubstatus: {
         parameters: {
             query?: never;
             header?: never;
@@ -7401,7 +7745,7 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
-    updateLeadStage: {
+    updateLeadSubstatus: {
         parameters: {
             query?: never;
             header?: {
@@ -7415,7 +7759,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LeadStage"];
+                "application/json": components["schemas"]["LeadSubstatusInput"];
             };
         };
         responses: {
@@ -7425,7 +7769,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeadStage"];
+                    "application/json": components["schemas"]["LeadSubstatus"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -7819,10 +8163,11 @@ export interface operations {
                 /** @description Opaque cursor from page.nextCursor */
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
-                tab?: "all" | "my" | "shared" | "team" | "unassigned" | "deleted" | "new" | "pending" | "scheduled" | "overdue" | "cold";
+                tab?: "all" | "my" | "shared" | "team" | "unassigned" | "deleted" | "hot" | "warm" | "cold" | "sale_done" | "scheduled" | "overdue";
                 /** @description Name, phone or email */
                 q?: string;
                 stageId?: string;
+                substatusId?: string;
                 ownerUserId?: string;
                 teamId?: string;
                 projectId?: string;

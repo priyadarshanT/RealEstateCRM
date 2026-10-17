@@ -86,7 +86,7 @@ export function NewLeadDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           {existingLead ? (
             <Alert className="sm:col-span-2">
               This lead already exists, owned by <b>{ownerName}</b>
-              {existingLead.stageName ? ` (stage: ${existingLead.stageName})` : ''}.{' '}
+              {existingLead.stageName ? ` (status: ${existingLead.stageName})` : ''}.{' '}
               <Button
                 type="button"
                 size="sm"

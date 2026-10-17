@@ -9,15 +9,16 @@ import {
   LeadSourceDto,
   LeadSourceInputDto,
   LeadStageDto,
-  LeadStageInputDto,
+  LeadSubstatusInputDto,
   ReasonDto,
   ReasonInputDto,
   ReasonListQuery,
+  SubstatusOrderDto,
 } from './dto/settings.dto';
 import { LeadConfigRepository, reasonCursor, sourceCursor, stageCursor } from './repositories/lead-config.repository';
-import { LeadSourceRow, LeadStageRow, ReasonRow } from './settings.schema';
+import { LeadSourceRow, LeadStageRow, LeadSubstatusRow, ReasonRow } from './settings.schema';
 
-const STAGE_FIELDS = ['key', 'name', 'category', 'sortOrder', 'isActive'] as const;
+const SUBSTATUS_FIELDS = ['name', 'sortOrder', 'isActive', 'requiresScheduling'] as const;
 const REASON_FIELDS = ['type', 'name', 'isActive'] as const;
 const SOURCE_FIELDS = ['type', 'name', 'integrationId', 'qualityScore', 'isActive'] as const;
 
@@ -27,9 +28,9 @@ const inUse = (what: string) =>
   new ProblemException(409, 'CONFLICT', `${what} in use`, `This ${what.toLowerCase()} is used by existing records. Make it inactive instead.`);
 
 /**
- * Lead stages, reasons and lead sources (SRS §2.19 editable stages, §2.21 reasons, §11.5).
- * Built-in stages and reasons are used by automation (10-minute rule, Lost/Invalid), so they cannot be deleted
- * and their key or category cannot change; they can be renamed, reordered or turned off.
+ * Lead statuses and substatuses, reasons and lead sources (Global Configuration › Manage Status, SRS §2.21, §11.5).
+ * The four statuses Hot, Warm, Cold and Sale Done are fixed; the Admin adds, renames, orders, turns off and
+ * (when unused) deletes their substatuses. Built-in reasons are used by automation and cannot be deleted.
  */
 @Injectable()
 export class LeadConfigService {
@@ -55,34 +56,60 @@ export class LeadConfigService {
     return this.repo.findStageByKey(key);
   }
 
-  async createStage(body: LeadStageInputDto): Promise<LeadStageRow> {
-    const missing = (['key', 'name', 'category', 'sortOrder'] as const).filter((f) => body[f] === undefined);
-    if (missing.length) throw Problems.validation(missing.map((field) => ({ field, message: `${field} is required` })));
-    const stage = await this.repo
-      .createStage({ key: body.key!, name: body.name!, category: body.category!, sortOrder: body.sortOrder!, isActive: body.isActive ?? true }, this.tenantId())
-      .catch(rethrow('Stage'));
-    await this.audit.record('create', 'lead_stages', stage.id, created(pick(stage, STAGE_FIELDS)));
-    return stage;
+  // ---------------------------------------------------------------- substatuses
+  async listSubstatuses(stageId?: string): Promise<LeadSubstatusRow[]> {
+    return this.repo.listSubstatuses(stageId);
   }
 
-  async updateStage(id: string, body: LeadStageInputDto, expectedVersion?: string): Promise<LeadStageRow> {
-    const before = await this.getStage(id);
-    if (before.isSystem && ((body.key !== undefined && body.key !== before.key) || (body.category !== undefined && body.category !== before.category))) {
-      throw builtIn('The key and category of a built-in stage cannot change.');
+  async getSubstatus(id: string): Promise<LeadSubstatusRow> {
+    const row = await this.repo.findSubstatus(id);
+    if (!row) throw Problems.notFound();
+    return row;
+  }
+
+  async createSubstatus(body: LeadSubstatusInputDto): Promise<LeadSubstatusRow> {
+    const missing = (['stageId', 'name'] as const).filter((f) => body[f] === undefined);
+    if (missing.length) throw Problems.validation(missing.map((field) => ({ field, message: `${field} is required` })));
+    const stage = await this.repo.findStage(body.stageId!);
+    if (!stage) throw Problems.validation([{ field: 'stageId', message: 'unknown status' }]);
+    const sortOrder = body.sortOrder ?? (await this.repo.listSubstatuses(stage.id)).reduce((n, r) => Math.max(n, r.sortOrder), 0) + 1;
+    const row = await this.repo
+      .createSubstatus({ ...pick(body, SUBSTATUS_FIELDS), stageId: stage.id, name: body.name!.trim(), sortOrder }, this.tenantId())
+      .catch(rethrow('Substatus'));
+    await this.audit.record('create', 'lead_substatuses', row.id, created({ status: stage.name, ...pick(row, SUBSTATUS_FIELDS) }));
+    return row;
+  }
+
+  async updateSubstatus(id: string, body: LeadSubstatusInputDto, expectedVersion?: string): Promise<LeadSubstatusRow> {
+    const before = await this.getSubstatus(id);
+    if (body.stageId !== undefined && body.stageId !== before.stageId) {
+      throw Problems.validation([{ field: 'stageId', message: 'a substatus cannot move to another status' }]);
     }
-    const values = pick(body, STAGE_FIELDS);
+    const values = pick({ ...body, ...(body.name !== undefined ? { name: body.name.trim() } : {}) }, SUBSTATUS_FIELDS);
     if (!Object.keys(values).length) return before;
-    const after = await this.repo.updateStage(id, values, expectedVersion).catch(rethrow('Stage'));
+    const after = await this.repo.updateSubstatus(id, values, expectedVersion).catch(rethrow('Substatus'));
     if (!after) throw versionConflict();
-    await this.audit.recordUpdate('lead_stages', id, pick(before, STAGE_FIELDS), pick(after, STAGE_FIELDS));
+    await this.audit.recordUpdate('lead_substatuses', id, pick(before, SUBSTATUS_FIELDS), pick(after, SUBSTATUS_FIELDS));
     return after;
   }
 
-  async deleteStage(id: string): Promise<void> {
-    const stage = await this.getStage(id);
-    if (stage.isSystem) throw builtIn('Built-in stages cannot be deleted. Make the stage inactive instead.');
-    await this.repo.deleteStage(id).catch(rethrow('Stage'));
-    await this.audit.record('delete', 'lead_stages', id, { key: [stage.key, null] });
+  /** Puts the substatuses of one status in the given order (1, 2, 3 …). */
+  async reorderSubstatuses(body: SubstatusOrderDto): Promise<LeadSubstatusRow[]> {
+    const current = await this.repo.listSubstatuses(body.stageId);
+    const ids = new Set(current.map((r) => r.id));
+    if (body.ids.length !== ids.size || new Set(body.ids).size !== ids.size || body.ids.some((id) => !ids.has(id))) {
+      throw Problems.validation([{ field: 'ids', message: 'list every substatus of this status exactly once' }]);
+    }
+    for (const [i, id] of body.ids.entries()) await this.repo.updateSubstatus(id, { sortOrder: i + 1 });
+    await this.audit.record('update', 'lead_substatuses', null, { order: [current.map((r) => r.name), body.ids.map((id) => current.find((r) => r.id === id)!.name)] });
+    return this.repo.listSubstatuses(body.stageId);
+  }
+
+  /** Only a substatus no lead has used can be deleted; one in use is turned off instead (409). */
+  async deleteSubstatus(id: string): Promise<void> {
+    const row = await this.getSubstatus(id);
+    await this.repo.deleteSubstatus(id).catch(rethrow('Substatus'));
+    await this.audit.record('delete', 'lead_substatuses', id, { name: [row.name, null] });
   }
 
   // ---------------------------------------------------------------- reasons

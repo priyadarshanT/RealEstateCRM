@@ -93,13 +93,10 @@ describe('leads module', () => {
       expect(other.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
     });
 
-    it('an agent cannot choose another owner; Admin can, and the owner gets the response timer', async () => {
+    it('an agent cannot choose another owner; Admin can (a chosen owner has no rotation timer)', async () => {
       await ali.post('/api/v1/leads').send({ fullName: 'X', phonePrimary: uniquePhone(), sourceId: SOURCE_META_A, ownerUserId: USERS.miraA.id }).expect(403);
       const lead = await newLead(admin, { ownerUserId: USERS.miraA.id });
-      expect(lead.ownerUserId).toBe(USERS.miraA.id);
-      const due = new Date(lead.responseDueAt).getTime() - Date.now();
-      expect(due).toBeGreaterThan(8 * 60_000);
-      expect(due).toBeLessThanOrEqual(15 * 60_000 + 5000); // 10 minutes by default (another test may set 15)
+      expect(lead).toMatchObject({ ownerUserId: USERS.miraA.id, responseDueAt: null });
       expect(lead.nextFollowUpAt).not.toBeNull();
     });
   });
@@ -168,9 +165,10 @@ describe('leads module', () => {
       expect(timeline.body.data[0].summary).toBe('Status: Cold · Not Interested → Hot · Zoom Schedule');
     });
 
-    it("the owner's first note stops the 10-minute timer; someone else's note does not", async () => {
+    it("the owner's first note stops the rotation timer; someone else's note does not", async () => {
       const lead = await newLead(admin, { ownerUserId: USERS.aliA.id });
-      expect(lead.responseDueAt).not.toBeNull();
+      // As if a rotation rule had given it to Ali.
+      await ownerQuery(`UPDATE leads SET response_due_at = now() + interval '10 minutes' WHERE id = $1`, [lead.id]);
       await sara.post(`/api/v1/leads/${lead.id}/notes`).send({ body: 'Manager note' }).expect(201);
       expect((await ali.get(`/api/v1/leads/${lead.id}`).expect(200)).body.responseDueAt).not.toBeNull();
       await ali.post(`/api/v1/leads/${lead.id}/notes`).send({ body: 'Called, interested' }).expect(201);

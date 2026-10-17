@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ProjectsModule } from '../projects/projects.module';
+import { SecondaryOwnerNotifier } from './secondary-owner-notifier';
 import { OrganizationModule } from '../organization/organization.module';
 import { USER_LEADS_PORT } from '../organization/organization.ports';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -18,9 +20,9 @@ import { UserLeadsAdapter } from './user-leads.adapter';
 
 /** Leads: list and tabs, lead page, timeline, re-enquiries, sharing, saved filters, search (SRS §1–2). */
 @Module({
-  imports: [OrganizationModule, SettingsModule, NotificationsModule],
+  imports: [OrganizationModule, SettingsModule, NotificationsModule, ProjectsModule],
   controllers: [LeadImportController, LeadsController, SavedFiltersController, LeadLookupController],
-  providers: [
+  providers: [SecondaryOwnerNotifier, 
     LeadsRepository,
     LeadScope,
     LeadsService,

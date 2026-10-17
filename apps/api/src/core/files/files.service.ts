@@ -65,10 +65,19 @@ const TARGET_FIELD = {
   commission: 'commissionId',
 } as const;
 
+/**
+ * Changes a file on download, e.g. the company watermark (Global Configuration › General). `plan` says whether this
+ * file is changed and the version of the change; the result is stored once per version and served from storage.
+ */
+export interface DownloadTransform {
+  plan(file: FileRow, categories: AttachmentCategory[]): Promise<{ version: string; apply: (body: Buffer) => Promise<Buffer> } | undefined>;
+}
+
 /** Files: upload and download links (S3), and attachments to records (architecture §3 "files"; API guide §7). */
 @Injectable()
 export class FilesService {
   private readonly access = new Map<TargetType, AttachmentAccess>();
+  private transform?: DownloadTransform;
 
   constructor(
     private readonly db: DbService,
@@ -123,11 +132,16 @@ export class FilesService {
     return { fileId, sizeBytes: size };
   }
 
+  /** One transform for every download (the settings module registers the watermark). */
+  registerDownloadTransform(transform: DownloadTransform): void {
+    this.transform = transform;
+  }
+
   async downloadLink(fileId: string): Promise<{ url: string; expiresAt: string }> {
     const file = await this.find(fileId);
     if (!file || !(await this.canSee(file))) throw Problems.notFound();
     return {
-      url: await this.storage.downloadLink(file.storageKey, file.fileName),
+      url: await this.storage.downloadLink(await this.servedKey(file), file.fileName),
       expiresAt: new Date(Date.now() + DOWNLOAD_LINK_SECONDS * 1000).toISOString(),
     };
   }
@@ -204,6 +218,19 @@ export class FilesService {
       .values({ id, tenantId, storageKey, fileName, mimeType, sizeBytes: body.length, uploadedBy: ownerUserId ?? RequestContext.get().userId ?? null })
       .returning();
     return row!;
+  }
+
+  /** Storage key to serve: the original, or its transformed copy (made once per transform version). */
+  private async servedKey(file: FileRow): Promise<string> {
+    if (!this.transform) return file.storageKey;
+    const links = await this.db.current.select({ category: attachments.category }).from(attachments).where(eq(attachments.fileId, file.id));
+    const plan = await this.transform.plan(file, [...new Set(links.map((l) => l.category))]);
+    if (!plan) return file.storageKey;
+    const key = `${file.tenantId}/derived/${file.id}/${plan.version}/${safeName(file.fileName)}`;
+    if ((await this.storage.size(key)) === null) {
+      await this.storage.write(key, await plan.apply(await this.storage.read(file.storageKey)), file.mimeType);
+    }
+    return key;
   }
 
   private async find(fileId: string): Promise<FileRow | undefined> {

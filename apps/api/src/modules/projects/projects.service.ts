@@ -115,6 +115,12 @@ export class ProjectsService implements OnModuleInit {
     return ProjectDto.from(row, (await this.inventory([row.id])).get(row.id) ?? emptyInventory());
   }
 
+  /** Project IDs by name, ignoring case (lead migration maps a "Project" column). */
+  async idsByName(): Promise<Map<string, string>> {
+    const rows = await this.db.current.select({ id: projects.id, name: projects.name }).from(projects);
+    return new Map(rows.map((r) => [r.name.trim().toLowerCase(), r.id]));
+  }
+
   /** Project names by ID (labels in other modules, e.g. reports). */
   async names(ids: string[]): Promise<Map<string, string>> {
     if (!ids.length) return new Map();

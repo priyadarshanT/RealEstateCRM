@@ -218,7 +218,7 @@ export class IntegrationsService {
       if (!fromAddress || !EMAIL.test(fromAddress)) throw Problems.validation([{ field: 'settings.fromAddress', message: 'a valid email address is required' }]);
       externalAccountId = fromAddress;
       label = body.accountLabel ?? fromAddress;
-      settings = { fromAddress, ...(str('fromName') ? { fromName: str('fromName') } : {}) };
+      settings = { fromAddress, ...(str('fromName') ? { fromName: str('fromName') } : {}), ...emailExtras(input) };
     }
 
     const [existing] = await this.db.current
@@ -378,6 +378,8 @@ export class IntegrationsService {
     const before = await this.get(id);
     // Values set by the server (page, secret hash, links, calendar channel) cannot be changed from here.
     const kept = Object.fromEntries(SERVER_SETTINGS.filter((k) => k in before.settings).map((k) => [k, before.settings[k]]));
+    // Email Configuration: reply-to address and signature are checked like on connect.
+    if (before.provider === 'email_ses' && body.settings) Object.assign(body.settings, emailExtras(body.settings, true));
     const settings = body.settings ? { ...before.settings, ...body.settings, ...kept } : before.settings;
     await this.db.current
       .update(integrations)
@@ -553,4 +555,25 @@ export class IntegrationsService {
     if (!key) throw new Error('OAUTH_STATE_SECRET is not set');
     return key;
   }
+}
+
+/**
+ * Email Configuration (Global Configuration §8): optional reply-to address and signature of the email sender.
+ * On update an empty value removes it.
+ */
+function emailExtras(input: Record<string, unknown>, update = false): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const key of ['replyTo', 'signature', 'fromName'] as const) {
+    if (!(key in input)) continue;
+    const raw = typeof input[key] === 'string' ? (input[key] as string).trim() : '';
+    if (!raw) {
+      if (update) out[key] = null;
+      continue;
+    }
+    if (key === 'replyTo' && !EMAIL.test(raw)) throw Problems.validation([{ field: 'settings.replyTo', message: 'a valid email address is required' }]);
+    if (key === 'signature' && raw.length > 2000) throw Problems.validation([{ field: 'settings.signature', message: 'at most 2000 characters' }]);
+    if (key === 'fromName' && raw.length > 100) throw Problems.validation([{ field: 'settings.fromName', message: 'at most 100 characters' }]);
+    out[key] = key === 'replyTo' ? raw.toLowerCase() : raw;
+  }
+  return out;
 }

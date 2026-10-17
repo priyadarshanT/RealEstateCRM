@@ -100,7 +100,7 @@ export function GeneralPage() {
               description="Add a watermark to the selected file types."
               checked={d.watermark.enabled}
               onChange={(v) => setW({ enabled: v })}
-              note="Saved here and shown in the preview; stamping it onto files arrives with the file sharing update."
+              note="Applied when an image or PDF of the chosen kinds is downloaded or shared; the original file is never changed. The logo option uses the company logo from Organization."
             >
               <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
                 <div className="grid gap-3 sm:grid-cols-2">

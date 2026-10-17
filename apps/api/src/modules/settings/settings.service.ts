@@ -23,7 +23,7 @@ export class SettingsService {
 
   /** Saved settings plus the Global Configuration defaults not saved yet (updatedAt empty). */
   async list(): Promise<SettingDto[]> {
-    const rows = (await this.repo.list()).map(SettingDto.from);
+    const rows = (await this.repo.list()).map((r) => SettingDto.from({ ...r, value: withDefaults(r.key, r.value) }));
     const saved = new Set(rows.map((r) => r.key));
     const defaults = Object.entries(SETTING_DEFAULTS)
       .filter(([key]) => !saved.has(key))
@@ -35,7 +35,7 @@ export class SettingsService {
   async one(key: string): Promise<SettingDto> {
     if (!isSettingKey(key)) throw Problems.notFound();
     const row = await this.repo.find(key);
-    if (row) return SettingDto.from(row);
+    if (row) return SettingDto.from({ ...row, value: withDefaults(key, row.value) });
     const value = SETTING_DEFAULTS[key];
     if (!value) throw Problems.notFound();
     return { key, value: value as Record<string, unknown>, updatedAt: null };
@@ -49,13 +49,13 @@ export class SettingsService {
       if (fallback) return fallback as SettingValue<K>;
       throw new Error(`Setting ${key} is missing for this tenant (create_tenant_defaults sets it)`);
     }
-    return SETTING_DEFINITIONS[key].parse(row.value) as SettingValue<K>;
+    return SETTING_DEFINITIONS[key].parse(withDefaults(key, row.value)) as SettingValue<K>;
   }
 
   /** A setting that has no default row (e.g. finance.numbering until the Admin sets it). */
   async find<K extends SettingKey>(key: K): Promise<SettingValue<K> | undefined> {
     const row = await this.repo.find(key);
-    return row ? (SETTING_DEFINITIONS[key].parse(row.value) as SettingValue<K>) : undefined;
+    return row ? (SETTING_DEFINITIONS[key].parse(withDefaults(key, row.value)) as SettingValue<K>) : undefined;
   }
 
   /**
@@ -142,4 +142,10 @@ export class SettingsService {
   private tenantId(): string {
     return this.db.currentTenantId!;
   }
+}
+
+/** A saved value completed with switches added later (their defaults), so older rows keep working. */
+function withDefaults(key: string, value: Record<string, unknown>): Record<string, unknown> {
+  const defaults = isSettingKey(key) ? (SETTING_DEFAULTS[key] as Record<string, unknown> | undefined) : undefined;
+  return defaults ? { ...defaults, ...value } : value;
 }

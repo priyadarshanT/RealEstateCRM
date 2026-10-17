@@ -7,6 +7,8 @@ import { useState, type FormEvent } from 'react';
 import { ApiError, errorMessage } from '@/core/api';
 import { formatMoney, initials } from '@/core/format';
 import { byId, useCampaigns, useColleagues, useSources } from '@/core/lookups';
+import { useCan } from '@/core/session';
+import { useClientPolicy } from '@/features/global-config/policy';
 import { useInquiries, useLeadMutations, useShares, type Lead } from './leads-api';
 import { PriorityBadge } from './stage-badge';
 
@@ -14,9 +16,15 @@ import { PriorityBadge } from './stage-badge';
 export function LeadDetailsCard({ lead, canEdit }: { lead: Lead; canEdit: boolean }) {
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
-  const users = byId(useColleagues().data);
+  const colleagues = useColleagues();
+  const users = byId(colleagues.data);
   const shares = useShares(lead.id);
-  const { setPriority } = useLeadMutations(lead.id);
+  const { setPriority, setSecondaryOwner } = useLeadMutations(lead.id);
+  const policy = useClientPolicy();
+  const can = useCan();
+  // Dual Lead Ownership (Global Configuration › Leads): shown when on, or when a secondary owner is already set.
+  const showSecondary = policy.data?.dualOwnership || !!lead.secondaryOwnerUserId;
+  const canSetSecondary = policy.data?.dualOwnership && can('leads.assign') && (lead.access === 'owner' || lead.access === 'scope');
   const [editing, setEditing] = useState(false);
 
   const budget =
@@ -71,6 +79,35 @@ export function LeadDetailsCard({ lead, canEdit }: { lead: Lead; canEdit: boolea
               <PriorityBadge priority={lead.priority} />
             )}
           </dd>
+          {showSecondary ? (
+            <>
+              <dt className="text-muted-foreground">Secondary owner</dt>
+              <dd>
+                {canSetSecondary ? (
+                  <Select
+                    className="h-7 w-48 text-xs"
+                    value={lead.secondaryOwnerUserId ?? ''}
+                    disabled={setSecondaryOwner.isPending}
+                    onChange={(e) => setSecondaryOwner.mutate(e.target.value || null)}
+                    aria-label="Secondary owner"
+                  >
+                    <option value="">None</option>
+                    {colleagues.data
+                      ?.filter((u) => u.id !== lead.ownerUserId)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName}
+                        </option>
+                      ))}
+                  </Select>
+                ) : lead.secondaryOwnerUserId ? (
+                  (users.get(lead.secondaryOwnerUserId)?.fullName ?? 'Assigned')
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </>
+          ) : null}
           <dt className="text-muted-foreground">Shared with</dt>
           <dd className="flex flex-wrap gap-1">
             {(shares.data ?? []).length === 0 ? '—' : null}
@@ -81,7 +118,7 @@ export function LeadDetailsCard({ lead, canEdit }: { lead: Lead; canEdit: boolea
             ))}
           </dd>
         </dl>
-        {setPriority.error ? <Alert>{errorMessage(setPriority.error)}</Alert> : null}
+        {setPriority.error || setSecondaryOwner.error ? <Alert>{errorMessage(setPriority.error ?? setSecondaryOwner.error)}</Alert> : null}
       </CardBody>
       <EditLeadDialog lead={lead} open={editing} onClose={() => setEditing(false)} />
     </Card>

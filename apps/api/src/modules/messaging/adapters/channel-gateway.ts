@@ -93,10 +93,11 @@ export class LiveChannelGateway implements ChannelGateway {
       new SendEmailCommand({
         FromEmailAddress: from,
         Destination: { ToAddresses: [message.to] },
+        ...(account.settings.replyTo ? { ReplyToAddresses: [String(account.settings.replyTo)] } : {}),
         Content: {
           Simple: {
             Subject: { Data: message.subject ?? '' },
-            Body: { Text: { Data: [message.body ?? '', message.media ? `${message.media.fileName}: ${message.media.url}` : ''].filter(Boolean).join('\n\n') } },
+            Body: { Text: { Data: emailText(account, message) } },
           },
         },
       }),
@@ -128,7 +129,8 @@ export class SimulatedChannelGateway implements ChannelGateway {
   async send(account: SenderAccount, message: OutboundMessage): Promise<{ providerMessageId: string }> {
     if (message.to.includes('fail')) throw new Error('Simulated provider error');
     this.sent.push({ account, message });
-    const what = message.template ? `template ${message.template.name} (${message.template.params.join(', ')})` : `${(message.body ?? '').slice(0, 120)}${message.media ? ` [${message.media.fileName}]` : ''}`;
+    const text = account.provider === 'email_ses' ? emailText(account, message) : (message.body ?? '');
+    const what = message.template ? `template ${message.template.name} (${message.template.params.join(', ')})` : `${text.slice(0, 120)}${message.media ? ` [${message.media.fileName}]` : ''}`;
     this.logger.log(`[simulated ${account.provider}] to ${message.to}: ${what}`);
     return { providerMessageId: `sim_${randomUUID()}` };
   }
@@ -136,4 +138,11 @@ export class SimulatedChannelGateway implements ChannelGateway {
   async submitTemplate(): Promise<{ providerTemplateId: string; status: 'pending' | 'approved' }> {
     return { providerTemplateId: `sim_tpl_${randomUUID()}`, status: 'approved' };
   }
+}
+
+/** Email body: the text, the attachment link, then the sender's signature (Global Configuration › Email Configuration). */
+export function emailText(account: SenderAccount, message: OutboundMessage): string {
+  const raw = account.settings.signature;
+  const signature = typeof raw === 'string' && raw.trim() ? `-- \n${raw.trim()}` : '';
+  return [message.body ?? '', message.media ? `${message.media.fileName}: ${message.media.url}` : '', signature].filter(Boolean).join('\n\n');
 }

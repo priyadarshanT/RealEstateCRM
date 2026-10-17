@@ -11,9 +11,19 @@ import { byId, useCampaigns, useSources, useTeams, useUsers } from '@/core/looku
 type Rule = Schemas['AssignmentRule'];
 type RuleInput = Partial<Omit<Rule, 'id'>>;
 
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FALLBACK_LABEL = { admin: 'Admin', unassigned: 'Unassigned queue', user: 'Chosen user' } as const;
+
+/** "Mon–Fri 09:00–18:00" style summary of a rule's shift. */
+function shiftText(r: Rule): string {
+  const days = r.shiftDays?.length === 7 ? 'Every day' : (r.shiftDays ?? []).map((d) => DAYS[d]).join(', ');
+  return `${days} · ${r.shiftStart && r.shiftEnd ? `${r.shiftStart}–${r.shiftEnd}` : 'all day'}${r.timezone ? ` (${r.timezone})` : ''}`;
+}
+
 /**
- * Assignment rules (SRS §4.8–4.9): round-robin within a team or listed agents, matched by campaign, source,
- * language and location. Rules are tried top to bottom; leads that match none go to Unassigned.
+ * Rotation rules (Global Configuration › Leads › Rotation, replaces assignment rules and the 10-minute rule):
+ * which leads, which team or agents, the shift, minutes before an unanswered lead rotates to the next agent,
+ * how many rotations, then the fallback. Rules are tried top to bottom; leads that match none go to Unassigned.
  */
 export function AssignmentTab() {
   const qc = useQueryClient();
@@ -21,6 +31,7 @@ export function AssignmentTab() {
   const teams = byId(useTeams().data);
   const sources = byId(useSources().data);
   const campaigns = byId(useCampaigns().data);
+  const users = byId(useUsers().data);
   const [editing, setEditing] = useState<Rule | 'new' | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['assignment-rules'] });
 
@@ -53,7 +64,7 @@ export function AssignmentTab() {
     <div className="space-y-3">
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setEditing('new')}>
-          <Plus /> New rule
+          <Plus /> New rotation rule
         </Button>
       </div>
       {toggle.error || reorder.error ? <Alert>{errorMessage(toggle.error ?? reorder.error)}</Alert> : null}
@@ -65,6 +76,7 @@ export function AssignmentTab() {
             <Th>Rule</Th>
             <Th>When</Th>
             <Th>Goes to</Th>
+            <Th>Shift and rotation</Th>
             <Th>Active</Th>
             <Th />
           </tr>
@@ -86,6 +98,12 @@ export function AssignmentTab() {
                 {r.targetTeamId ? `Team ${teams.get(r.targetTeamId)?.name ?? ''}` : `${r.memberUserIds?.length ?? 0} agents`} · round-robin
                 {r.respectAvailability ? <Badge className="ml-1">skips unavailable</Badge> : null}
               </Td>
+              <Td className="text-xs">
+                <p>{shiftText(r)}</p>
+                <p className="text-muted-foreground">
+                  Every {r.rotationMinutes} min · up to {r.maxRotations} rotations · then {r.fallback === 'user' ? (users.get(r.fallbackUserId ?? '')?.fullName ?? 'chosen user') : FALLBACK_LABEL[r.fallback ?? 'admin']}
+                </p>
+              </Td>
               <Td>
                 <input type="checkbox" checked={r.isActive !== false} onChange={(e) => toggle.mutate({ id: r.id, isActive: e.target.checked })} aria-label={`${r.name} active`} />
               </Td>
@@ -98,7 +116,7 @@ export function AssignmentTab() {
           ))}
           {list.length === 0 && !rules.isLoading ? (
             <tr>
-              <Td colSpan={6} className="text-center text-muted-foreground">
+              <Td colSpan={7} className="text-center text-muted-foreground">
                 No rules yet: new leads go to Unassigned until a rule matches.
               </Td>
             </tr>
@@ -118,7 +136,11 @@ function RuleDialog({ rule, nextPriority, onClose }: { rule: Rule | 'new' | null
   const campaigns = useCampaigns();
   const existing = rule && rule !== 'new' ? rule : null;
   const [form, setForm] = useState<RuleInput | null>(null);
-  const value: RuleInput = form ?? (existing ? { ...existing } : { name: '', conditions: {}, memberUserIds: [], respectAvailability: true, isActive: true });
+  const value: RuleInput =
+    form ??
+    (existing
+      ? { ...existing }
+      : { name: '', conditions: {}, memberUserIds: [], respectAvailability: true, isActive: true, shiftDays: [0, 1, 2, 3, 4, 5, 6], shiftStart: null, shiftEnd: null, timezone: null, rotationMinutes: 10, maxRotations: 3, fallback: 'admin', fallbackUserId: null });
   const set = (patch: RuleInput) => setForm({ ...value, ...patch });
   const setCond = (patch: Partial<Rule['conditions']>) => set({ conditions: { ...value.conditions, ...patch } });
   const list = (s: string) =>
@@ -157,7 +179,7 @@ function RuleDialog({ rule, nextPriority, onClose }: { rule: Rule | 'new' | null
 
   return (
     <Dialog open={!!rule} onOpenChange={(o) => !o && close()}>
-      <DialogContent title={existing ? `Edit rule ${existing.name}` : 'New assignment rule'} wide>
+      <DialogContent title={existing ? `Edit rotation rule ${existing.name}` : 'New rotation rule'} wide>
         <form
           className="grid gap-3 sm:grid-cols-2"
           onSubmit={(e) => {
@@ -217,6 +239,61 @@ function RuleDialog({ rule, nextPriority, onClose }: { rule: Rule | 'new' | null
             <input type="checkbox" checked={value.respectAvailability !== false} onChange={(e) => set({ respectAvailability: e.target.checked })} />
             Skip agents on leave, unavailable or with lead assignment turned off
           </label>
+          <fieldset className="sm:col-span-2">
+            <legend className="mb-1 text-xs font-medium text-muted-foreground">Shift days</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {DAYS.map((d, i) => {
+                const on = (value.shiftDays ?? []).includes(i);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => set({ shiftDays: on ? (value.shiftDays ?? []).filter((x) => x !== i) : [...(value.shiftDays ?? []), i].sort() })}
+                    className={`rounded-full border px-3 py-1 text-xs ${on ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-border text-muted-foreground'}`}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          <Field label="Shift start (empty = all day)">
+            <Input type="time" value={value.shiftStart ?? ''} onChange={(e) => set({ shiftStart: e.target.value || null })} />
+          </Field>
+          <Field label="Shift end">
+            <Input type="time" value={value.shiftEnd ?? ''} onChange={(e) => set({ shiftEnd: e.target.value || null })} />
+          </Field>
+          <Field label="Time zone (empty = company time zone)">
+            <Input value={value.timezone ?? ''} onChange={(e) => set({ timezone: e.target.value.trim() || null })} placeholder="Asia/Dubai" />
+          </Field>
+          <Field label="Rotate after (minutes without a response)">
+            <Input type="number" min={1} max={1440} value={value.rotationMinutes ?? 10} onChange={(e) => set({ rotationMinutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="Maximum rotations">
+            <Input type="number" min={0} max={50} value={value.maxRotations ?? 3} onChange={(e) => set({ maxRotations: Number(e.target.value) })} />
+          </Field>
+          <Field label="Then the lead goes to">
+            <Select value={value.fallback ?? 'admin'} onChange={(e) => set({ fallback: e.target.value as Rule['fallback'], ...(e.target.value === 'user' ? {} : { fallbackUserId: null }) })}>
+              <option value="admin">Admin</option>
+              <option value="unassigned">Unassigned queue</option>
+              <option value="user">A chosen user</option>
+            </Select>
+          </Field>
+          {value.fallback === 'user' ? (
+            <Field label="Fallback user *">
+              <Select value={value.fallbackUserId ?? ''} onChange={(e) => set({ fallbackUserId: e.target.value || null })}>
+                <option value="">Choose a user</option>
+                {users.data
+                  ?.filter((u) => u.status === 'active')
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          ) : null}
           {save.error || remove.error ? <Alert className="sm:col-span-2">{errorMessage(save.error ?? remove.error)}</Alert> : null}
           <div className="flex justify-between gap-2 sm:col-span-2">
             {existing ? (
@@ -230,7 +307,7 @@ function RuleDialog({ rule, nextPriority, onClose }: { rule: Rule | 'new' | null
               <Button type="button" variant="outline" onClick={close}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={save.isPending || !value.name}>
+              <Button type="submit" disabled={save.isPending || !value.name || !value.shiftDays?.length || (value.fallback === 'user' && !value.fallbackUserId)}>
                 Save rule
               </Button>
             </div>

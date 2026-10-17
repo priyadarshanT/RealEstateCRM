@@ -22,29 +22,25 @@ describe('settings module', () => {
   });
 
   describe('tenant settings', () => {
-    it('lists the defaults: 10-minute response time and scoring weights', async () => {
+    it('lists the defaults: scoring weights; the 10-minute rule is gone (rotation rules replaced it)', async () => {
       const res = await admin.get('/api/v1/settings').expect(200);
       const byKey = Object.fromEntries(res.body.data.map((s: { key: string; value: unknown }) => [s.key, s.value]));
-      expect(byKey['leads.response_time']).toEqual({ minutes: 10, next_agent_scope: 'team', fallback: 'admin' });
+      expect(byKey['leads.response_time']).toBeUndefined();
+      expect(byKey['leads.features']).toMatchObject({ rotation: true });
       expect(byKey['leads.scoring']).toEqual({ budget_fit: 30, project_match: 20, source_quality: 20, engagement: 30 });
       await agent.get('/api/v1/settings').expect(403);
     });
 
-    it('Admin changes the response time; invalid values and unknown keys are refused', async () => {
-      const res = await admin
-        .put('/api/v1/settings/leads.response_time')
-        .send({ value: { minutes: 15, next_agent_scope: 'team', fallback: 'admin' } })
-        .expect(200);
-      expect(res.body).toMatchObject({ key: 'leads.response_time', value: { minutes: 15 } });
-
-      const bad = await admin.put('/api/v1/settings/leads.response_time').send({ value: { minutes: 0, next_agent_scope: 'team', fallback: 'admin' } }).expect(400);
-      expect(bad.body.errors[0].field).toBe('value.minutes');
-      await admin.put('/api/v1/settings/leads.scoring').send({ value: { budget_fit: 50, project_match: 50, source_quality: 50, engagement: 50 } }).expect(400);
-      const unknown = await admin.put('/api/v1/settings/leads.auto_close').send({ value: { days: 30 } }).expect(422);
+    it('Admin changes the scoring weights; invalid values and unknown keys are refused', async () => {
+      const res = await admin.put('/api/v1/settings/leads.scoring').send({ value: { budget_fit: 40, project_match: 20, source_quality: 20, engagement: 20 } }).expect(200);
+      expect(res.body).toMatchObject({ key: 'leads.scoring', value: { budget_fit: 40 } });
+      const bad = await admin.put('/api/v1/settings/leads.scoring').send({ value: { budget_fit: 50, project_match: 50, source_quality: 50, engagement: 50 } }).expect(400);
+      expect(bad.body.errors[0].field).toBe('value');
+      const unknown = await admin.put('/api/v1/settings/leads.response_time').send({ value: { minutes: 10 } }).expect(422);
       expect(unknown.body.code).toBe('UNKNOWN_SETTING');
-
       const audit = await admin.get('/api/v1/audit-logs?entityType=tenant_settings').expect(200);
-      expect(audit.body.data[0].changes['leads.response_time'][1]).toMatchObject({ minutes: 15 });
+      expect(audit.body.data[0].changes['leads.scoring'][1]).toMatchObject({ budget_fit: 40 });
+      await admin.put('/api/v1/settings/leads.scoring').send({ value: { budget_fit: 30, project_match: 20, source_quality: 20, engagement: 30 } }).expect(200);
     });
   });
 
@@ -104,7 +100,7 @@ describe('settings module', () => {
     it('dependent switches are checked: secondary owner notification needs dual ownership; hidden contact info needs a role', async () => {
       const base = {
         export_leads: false, source_update: false, dual_ownership: false, secondary_owner_notification: false, past_date_selection: false,
-        hide_contact_info: { enabled: false, role_keys: [] }, mandatory_location: false, unassigned_communication: false,
+        hide_contact_info: { enabled: false, role_keys: [] }, mandatory_location: false, unassigned_communication: false, rotation: true,
       };
       const a = await admin.put('/api/v1/settings/leads.features').send({ value: { ...base, secondary_owner_notification: true } }).expect(400);
       expect(a.body.errors[0].field).toBe('value.secondary_owner_notification');

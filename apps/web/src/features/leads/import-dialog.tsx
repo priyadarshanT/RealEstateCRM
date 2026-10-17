@@ -27,11 +27,24 @@ const FIELDS: { key: string; label: string }[] = [
   { key: 'externalSubmissionId', label: 'Row / submission ID' },
 ];
 
+/** Extra columns of a migration from another CRM (Global Configuration › Migration). */
+const MIGRATION_FIELDS: { key: string; label: string }[] = [
+  { key: 'source', label: 'Source' },
+  { key: 'owner', label: 'Owner (email or name)' },
+  { key: 'status', label: 'Status' },
+  { key: 'substatus', label: 'Substatus' },
+  { key: 'project', label: 'Project' },
+  { key: 'createdDate', label: 'Created date' },
+];
+
 /**
  * Excel / CSV import (SRS §2.4): preview with phone and email checks, column mapping, rejected rows with the
  * reason, then import. Existing phones or emails become re-enquiries, never duplicates; the same row ID is never imported twice.
  */
-export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function ImportDialog({ open, onOpenChange, migration = false }: { open: boolean; onOpenChange: (v: boolean) => void; migration?: boolean }) {
+  // A migration chooses what happens to leads that already exist; the lead page import adds a re-enquiry.
+  const [duplicateMode, setDuplicateMode] = useState<'re_enquiry' | 'skip' | 'update'>(migration ? 'skip' : 're_enquiry');
+  const fields = migration ? [...FIELDS, ...MIGRATION_FIELDS] : FIELDS;
   const qc = useQueryClient();
   const sources = useSources();
   const importSource = sources.data?.find((s) => s.type === 'import');
@@ -47,7 +60,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setFileId(id);
       return unwrap(
         await api.POST('/leads/imports', {
-          body: { fileId: id, sourceId: sourceId || importSource!.id, ...(withMapping ? { mapping } : {}) },
+          body: { fileId: id, sourceId: sourceId || importSource!.id, duplicateMode, ...(withMapping ? { mapping } : {}) },
         }),
       );
     },
@@ -91,7 +104,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : close())}>
-      <DialogContent title="Import leads from Excel or CSV" wide>
+      <DialogContent title={migration ? 'Migrate leads from your previous CRM' : 'Import leads from Excel or CSV'} wide>
         <div className="space-y-4">
           {!job ? (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -106,7 +119,16 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                     </option>
                   ))}
                 </Select>
+                {migration ? <span className="text-xs text-muted-foreground">Used when the file has no Source column, or the row leaves it empty.</span> : null}
               </Field>
+              {migration ? (
+                <Field label="Leads that already exist (same phone or email)" className="sm:col-span-2">
+                  <Select value={duplicateMode} onChange={(e) => setDuplicateMode(e.target.value as 'skip' | 'update')}>
+                    <option value="skip">Skip them (keep the CRM as it is)</option>
+                    <option value="update">Update them with the file&apos;s values</option>
+                  </Select>
+                </Field>
+              ) : null}
               <div className="flex justify-end sm:col-span-2">
                 <Button disabled={!file || preview.isPending} onClick={() => preview.mutate(false)}>
                   {preview.isPending ? 'Reading file…' : 'Preview'}
@@ -122,7 +144,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 {rejected ? <Badge tone="danger">{rejected} rejected</Badge> : null}
               </p>
               <div className="grid gap-2 sm:grid-cols-3">
-                {FIELDS.map((f) => (
+                {fields.map((f) => (
                   <Field key={f.key} label={f.label}>
                     <Select className="h-8 text-xs" value={mapping[f.key] ?? ''} onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value }))}>
                       <option value="">— not in file —</option>
@@ -178,7 +200,10 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           {job && (job.status === 'importing' || finished) ? (
             <Alert tone={job.status === 'failed' ? 'danger' : job.status === 'completed' ? 'success' : 'info'}>
               {job.status === 'importing' ? 'Importing… ' : job.status === 'failed' ? 'The import failed. ' : 'Import finished. '}
-              {job.rowsImported ?? 0} new leads, {job.rowsReEnquired ?? 0} re-enquiries, {job.rowsRejected ?? 0} rejected.
+              {job.duplicateMode && job.duplicateMode !== 're_enquiry'
+                ? `${job.rowsImported ?? 0} new leads, ${job.rowsUpdated ?? 0} updated, ${job.rowsSkipped ?? 0} skipped, ${job.rowsRejected ?? 0} rejected.`
+                : `${job.rowsImported ?? 0} new leads, ${job.rowsReEnquired ?? 0} re-enquiries, ${job.rowsRejected ?? 0} rejected.`}
+              {job.batchId ? <span className="ml-1 font-mono text-xs">({job.batchId})</span> : null}
               {job.rejectedRowsFileId ? (
                 <Button variant="link" size="sm" className="ml-2" onClick={() => void openDownload(job.rejectedRowsFileId!)}>
                   Download rejected rows

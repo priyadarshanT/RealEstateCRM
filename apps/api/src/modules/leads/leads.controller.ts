@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
-import {
+import { SecondaryOwnerDto,
   ActivityDto,
   ActivityPage,
   AssignDto,
@@ -172,6 +172,15 @@ export class LeadsController {
   @ApiOkResponse({ type: LeadShareList })
   async shares(@CurrentPrincipal() p: Principal, @Param('id', ParseUUIDPipe) id: string): Promise<LeadShareList> {
     return { data: await this.actions.listShares(p, id) };
+  }
+
+  @Post(':id/secondary-owner')
+  @HttpCode(200)
+  @RequirePermission('leads.assign')
+  @ApiOperation({ operationId: 'setSecondaryOwner', summary: 'Set or remove the secondary owner' })
+  @ApiOkResponse({ type: LeadDto })
+  secondaryOwner(@CurrentPrincipal() p: Principal, @Param('id', ParseUUIDPipe) id: string, @Body() body: SecondaryOwnerDto): Promise<LeadDto> {
+    return this.leads.setSecondaryOwner(p, id, body.userId);
   }
 
   @Post(':id/shares')

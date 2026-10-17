@@ -7,14 +7,6 @@ import { z } from 'zod';
 const percent = z.number().int().min(0).max(100);
 
 export const SETTING_DEFINITIONS = {
-  /** SRS §3.4–3.6: minutes an agent has to act on a new lead before it moves on (10 by default). */
-  'leads.response_time': z
-    .object({
-      minutes: z.number().int().min(1).max(1440),
-      next_agent_scope: z.literal('team'),
-      fallback: z.literal('admin'),
-    })
-    .strict(),
   /** SRS §2.24: lead score weights (budget, project match, source quality, engagement), adding up to 100. */
   'leads.scoring': z
     .object({ budget_fit: percent, project_match: percent, source_quality: percent, engagement: percent })
@@ -72,6 +64,7 @@ export const SETTING_DEFINITIONS = {
       hide_contact_info: z.object({ enabled: z.boolean(), role_keys: z.array(z.string().regex(/^[a-z_]+$/)).max(50) }).strict(),
       mandatory_location: z.boolean(),
       unassigned_communication: z.boolean(),
+      rotation: z.boolean(),
     })
     .strict()
     .refine((v) => !v.secondary_owner_notification || v.dual_ownership, {
@@ -93,7 +86,7 @@ export function isSettingKey(key: string): key is SettingKey {
 
 /**
  * Values used until the Admin saves a setting. Exports and communication with unassigned leads start off
- * (Global Configuration §10); copy and paste stays allowed.
+ * (Global Configuration §10); copy and paste stays allowed; Rotation is on.
  */
 export const SETTING_DEFAULTS: { [K in SettingKey]?: SettingValue<K> } = {
   'general.preferences': {
@@ -113,5 +106,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]?: SettingValue<K> } = {
     hide_contact_info: { enabled: false, role_keys: [] },
     mandatory_location: false,
     unassigned_communication: false,
+    // Rotation replaced the assignment rules and the 10-minute rule, so it starts on to keep leads flowing.
+    rotation: true,
   },
 };

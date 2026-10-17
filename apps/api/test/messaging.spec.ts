@@ -110,7 +110,7 @@ describe('messaging', () => {
     expect(timeline[0]).toMatchObject({ type: 'whatsapp', summary: 'WhatsApp sent: follow_up', links: { messageId: queued.body.id } });
   });
 
-  it('a message by the owner counts as acting on the lead (10-minute rule stops)', async () => {
+  it('a message by the owner counts as acting on the lead (first response recorded)', async () => {
     const [lead] = await ownerQuery<{ response_due_at: Date | null; first_response_at: Date | null }>('SELECT response_due_at, first_response_at FROM leads WHERE id = $1', [leadId]);
     expect(lead).toMatchObject({ response_due_at: null, first_response_at: expect.any(Date) });
   });

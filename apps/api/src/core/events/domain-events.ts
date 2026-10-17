@@ -23,6 +23,7 @@ export interface DomainEvents {
   'lead.shared': { tenantId: string; leadId: string; userId: string; access: 'view' | 'edit'; sharedBy: string };
   'lead.updated': { tenantId: string; leadId: string };
   'lead.no_response': { tenantId: string; leadId: string; userId: string };
+  'lead.secondary_owner_changed': { tenantId: string; leadId: string; userId: string | null; changedBy: string };
   'user.receives_leads_changed': { tenantId: string; userId: string; receivesLeads: boolean };
 }
 

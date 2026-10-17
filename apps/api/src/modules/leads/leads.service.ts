@@ -33,6 +33,11 @@ export interface OwnerChange {
   reasonId?: string | null;
   ruleId?: string | null;
   note?: string | null;
+  /**
+   * Rotation (Global Configuration › Leads): the rule that assigned the lead, how many times it has rotated and
+   * the minutes the new owner has to act before it rotates again. Without it there is no response timer.
+   */
+  rotation?: { ruleId: string; count: number; minutes: number } | null;
 }
 
 const SORTABLE = {
@@ -276,8 +281,8 @@ export class LeadsService {
   // =================================================================== used by other modules and actions
   /**
    * Changes the owner and logs it (lead_assignments, timeline, lead.assigned). Every assignment path uses this:
-   * manual, rules and round-robin, the 10-minute rule, Admin fallback, re-enquiry and user deactivation.
-   * A new owner of an open lead gets the response timer (10 minutes by default); Admin fallback does not.
+   * manual, rotation rules, rotation to the next agent, fallback, re-enquiry and user deactivation.
+   * A lead given by a rotation rule gets that rule's response timer; manual and fallback owners do not.
    */
   async changeOwner(leadId: string, toUserId: string | null, change: OwnerChange): Promise<LeadRow> {
     const lead = await this.repo.lock(leadId);
@@ -285,14 +290,20 @@ export class LeadsService {
     if (lead.ownerUserId === toUserId) return lead;
 
     const now = new Date();
-    let patch: LeadPatch = { ownerUserId: null, teamId: null, assignedAt: null, responseDueAt: null, firstResponseAt: null };
+    const rotation = {
+      rotationRuleId: change.rotation?.ruleId ?? null,
+      rotationCount: change.rotation?.count ?? 0,
+      // The secondary owner can never be the owner (Dual Lead Ownership).
+      ...(toUserId && lead.secondaryOwnerUserId === toUserId ? { secondaryOwnerUserId: null } : {}),
+    };
+    let patch: LeadPatch = { ownerUserId: null, teamId: null, assignedAt: null, responseDueAt: null, firstResponseAt: null, ...rotation };
     if (toUserId) {
       const owner = await this.directory.user(toUserId);
       if (!owner) throw Problems.validation([{ field: 'toUserId', message: 'user not found' }]);
-      const timer = lead.stageCategory === 'open' && change.method !== 'admin_fallback';
-      const minutes = timer ? (await this.settings.get('leads.response_time')).minutes : 0;
-      const due = timer ? new Date(now.getTime() + minutes * 60_000) : null;
+      const timer = lead.stageCategory === 'open' && !!change.rotation;
+      const due = timer ? new Date(now.getTime() + change.rotation!.minutes * 60_000) : null;
       patch = {
+        ...rotation,
         ownerUserId: toUserId,
         teamId: owner.teamId,
         assignedAt: now,
@@ -327,8 +338,8 @@ export class LeadsService {
   }
 
   /**
-   * Any logged action by the owner (call, note, message, stage change, completed task) stops the 10-minute
-   * timer (SRS §3.4). Other users' actions only update the last activity time.
+   * Any logged action by the owner (call, note, message, status change, completed task) stops the rotation
+   * timer. Other users' actions only update the last activity time.
    */
   async recordAction(leadId: string, userId: string | null): Promise<void> {
     const lead = await this.repo.find(leadId);
@@ -337,7 +348,8 @@ export class LeadsService {
     const ownerActed = userId !== null && lead.ownerUserId === userId;
     await this.repo.touch(leadId, {
       lastActivityAt: now,
-      ...(ownerActed && lead.responseDueAt ? { responseDueAt: null, firstResponseAt: lead.firstResponseAt ?? now } : {}),
+      // The owner's first action is kept for response reports, with or without a rotation timer.
+      ...(ownerActed && (lead.responseDueAt || !lead.firstResponseAt) ? { responseDueAt: null, firstResponseAt: lead.firstResponseAt ?? now } : {}),
     });
     if (ownerActed) await this.events.publish('lead.responded', { tenantId: lead.tenantId, leadId, userId: userId! });
   }
@@ -373,7 +385,50 @@ export class LeadsService {
     await this.repo.touch(leadId, { nextFollowUpAt: at });
   }
 
-  /** Worker scan across tenants: open leads whose owner has not acted within the response time (10-minute rule). */
+  /** Owner of a closed lead (Cold, Sale Done) given by a migration: logged like any owner change, without a timer. */
+  async assignClosed(leadId: string, toUserId: string, note: string): Promise<void> {
+    const lead = await this.repo.find(leadId);
+    if (!lead || lead.ownerUserId === toUserId) return;
+    const owner = await this.directory.user(toUserId);
+    if (!owner) throw Problems.validation([{ field: 'owner', message: 'user not found' }]);
+    await this.repo.update(leadId, { ownerUserId: toUserId, teamId: owner.teamId, assignedAt: new Date(), responseDueAt: null });
+    await this.repo.insertAssignment({ leadId, fromUserId: lead.ownerUserId, toUserId, method: 'manual', note, changedBy: null });
+    await this.repo.addActivity(leadId, { type: 'owner_change', summary: `Owner: ${owner.fullName} (${note})` });
+  }
+
+  /** Rotation outside the rule's shift: the response deadline moves to when the shift starts again. */
+  async postponeResponse(leadId: string, until: Date): Promise<void> {
+    await this.repo.touch(leadId, { responseDueAt: until });
+  }
+
+  /** Rotation is off or the rule is gone: the lead stays with its owner without a timer. */
+  async clearResponseTimer(leadId: string): Promise<void> {
+    await this.repo.touch(leadId, { responseDueAt: null, rotationRuleId: null, rotationCount: 0 });
+  }
+
+  // =================================================================== Dual Lead Ownership
+  /** Sets or clears the secondary owner (never the owner). Needs Dual Lead Ownership on; owner or manager only. */
+  async setSecondaryOwner(p: Principal, id: string, userId: string | null): Promise<LeadDto> {
+    const { lead, access } = await this.managed(p, id);
+    if (userId !== null && !(await this.features()).dual_ownership) {
+      throw Problems.forbidden('Dual Lead Ownership is turned off (Global Configuration › Leads).');
+    }
+    if (userId !== null) {
+      if (userId === lead.ownerUserId) throw Problems.validation([{ field: 'userId', message: 'the secondary owner cannot be the owner' }]);
+      const user = await this.directory.user(userId);
+      if (!user || user.status !== 'active') throw Problems.validation([{ field: 'userId', message: 'choose an active user' }]);
+    }
+    if (lead.secondaryOwnerUserId === userId) return this.toDto(lead, access);
+    const after = (await this.repo.update(id, { secondaryOwnerUserId: userId }))!;
+    const names = await this.directory.users([lead.secondaryOwnerUserId, userId].filter((v): v is string => Boolean(v)));
+    const label = (u: string | null) => (u ? (names.get(u)?.fullName ?? 'user') : 'none');
+    await this.repo.addActivity(id, { type: 'owner_change', summary: `Secondary owner: ${label(lead.secondaryOwnerUserId)} → ${label(userId)}`, actorUserId: p.userId });
+    await this.audit.record('update', 'leads', id, { secondaryOwnerUserId: [lead.secondaryOwnerUserId, userId] });
+    await this.events.publish('lead.secondary_owner_changed', { tenantId: lead.tenantId, leadId: id, userId, changedBy: p.userId });
+    return this.toDto(after, access);
+  }
+
+  /** Worker scan across tenants: open leads whose owner has not acted within the rotation time. */
   async responseOverdue(limit: number): Promise<{ id: string; tenantId: string; ownerUserId: string }[]> {
     const rows = await this.workerDb.db
       .select({ id: leads.id, tenantId: leads.tenantId, ownerUserId: leads.ownerUserId })
@@ -567,10 +622,10 @@ const SAVED_FILTER_KEYS = {
 
 const METHOD_LABEL: Record<AssignmentMethod, string> = {
   manual: 'manual',
-  round_robin: 'round-robin',
-  rule: 'assignment rule',
+  round_robin: 'rotation',
+  rule: 'rotation rule',
   no_response: 'No response from agent',
-  admin_fallback: 'Whole team did not respond',
+  admin_fallback: 'Rotation finished: nobody responded',
   user_deactivated: 'user deactivated',
   re_enquiry: 're-enquiry',
 };

@@ -375,7 +375,7 @@ export interface paths {
         };
         /**
          * List settings
-         * @description Global Configuration. Keys: general.preferences, security.policy, leads.features, leads.response_time, leads.scoring, finance.numbering. Settings never saved are listed with their default and an empty updatedAt.
+         * @description Global Configuration. Keys: general.preferences, security.policy, leads.features (with the Rotation switch), leads.scoring, finance.numbering. Settings never saved are listed with their default and an empty updatedAt.
          *
          *     **Permission:** `settings.manage`
          */
@@ -912,6 +912,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leads/{id}/secondary-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set or remove the secondary owner
+         * @description Needs Dual Lead Ownership on (Global Configuration › Leads); never the owner. Owner or a manager above them.
+         *
+         *     **Permission:** `leads.assign`
+         */
+        post: operations["setSecondaryOwner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leads/{id}/shares": {
         parameters: {
             query?: never;
@@ -1031,7 +1053,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Import batches
+         * @description Newest first, with their counts (Global Configuration › Migration).
+         *
+         *     **Permission:** `leads.import`
+         */
+        get: operations["listLeadImports"];
         put?: never;
         /**
          * Start lead import
@@ -1040,6 +1068,28 @@ export interface paths {
          *     **Permission:** `leads.import`
          */
         post: operations["startLeadImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leads/imports/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Excel template for a migration
+         * @description Columns Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date, with an example row and a sheet of the valid statuses and substatuses.
+         *
+         *     **Permission:** `leads.import`
+         */
+        get: operations["downloadLeadImportTemplate"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1080,6 +1130,28 @@ export interface paths {
          * @description **Permission:** `leads.import`
          */
         post: operations["confirmLeadImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leads/imports/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed import
+         * @description Rows already imported are recognised, so a retry never creates duplicates.
+         *
+         *     **Permission:** `leads.import`
+         */
+        post: operations["retryLeadImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5076,6 +5148,8 @@ export interface components {
             /** @enum {string} */
             stageCategory: "open" | "won" | "lost" | "invalid";
             substatusId?: string | null;
+            /** @description Dual Lead Ownership */
+            secondaryOwnerUserId?: string | null;
             closeReasonId?: string | null;
             /** @description Phone and email are masked for this user (Hide Lead Contact Info) */
             readonly contactHidden?: boolean;
@@ -5239,6 +5313,18 @@ export interface components {
             rowsReEnquired?: number;
             rowsRejected?: number;
             rejectedRowsFileId?: string | null;
+            /** @enum {string} */
+            duplicateMode?: "re_enquiry" | "skip" | "update";
+            rowsUpdated?: number;
+            rowsSkipped?: number;
+            /** @description Runs of this batch; a retry never creates duplicates */
+            attempts?: number;
+            /** @description Short batch ID shown to users */
+            batchId?: string;
+            errorDetail?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            completedAt?: string | null;
         };
         SavedFilter: {
             /** Format: uuid */
@@ -5253,6 +5339,7 @@ export interface components {
             sort?: string[];
             sharedTeamId?: string | null;
         };
+        /** @description Rotation rule (Global Configuration › Leads › Rotation): replaces the 10-minute rule. Matches leads, works in its shift, rotates unanswered leads between its agents and then hands them to the fallback. */
         AssignmentRule: {
             /** Format: uuid */
             readonly id: string;
@@ -5269,6 +5356,22 @@ export interface components {
             memberUserIds?: string[];
             respectAvailability?: boolean;
             isActive?: boolean;
+            /** @description Days the rule works, 0 = Sunday */
+            shiftDays?: number[];
+            /** @description Empty with shiftEnd = all day */
+            shiftStart?: string | null;
+            shiftEnd?: string | null;
+            /** @description Empty = company time zone */
+            timezone?: string | null;
+            /** @description Minutes an agent has to act before the lead rotates to the next agent */
+            rotationMinutes?: number;
+            maxRotations?: number;
+            /**
+             * @description Where the lead goes after the last rotation
+             * @enum {string}
+             */
+            fallback?: "admin" | "unassigned" | "user";
+            fallbackUserId?: string | null;
         };
         Campaign: {
             /** Format: uuid */
@@ -8543,6 +8646,39 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
+    setSecondaryOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    userId: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lead"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
     listLeadShares: {
         parameters: {
             query?: never;
@@ -8757,6 +8893,32 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
+    listLeadImports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadImport"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
     startLeadImport: {
         parameters: {
             query?: never;
@@ -8774,6 +8936,11 @@ export interface operations {
                     mapping?: {
                         [key: string]: string;
                     };
+                    /**
+                     * @description Known phone or email: re_enquiry (default, lead import), skip or update (migration)
+                     * @enum {string}
+                     */
+                    duplicateMode?: "re_enquiry" | "skip" | "update";
                 };
             };
         };
@@ -8788,6 +8955,29 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    downloadLeadImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Excel file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             429: components["responses"]["TooMany"];
@@ -8844,6 +9034,34 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    retryLeadImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Import started again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadImport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["TooMany"];
         };
     };

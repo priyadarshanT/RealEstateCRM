@@ -8,7 +8,7 @@ const SOURCE_META_B = 'b1000000-0000-0000-0000-000000000001';
 
 // Assignment rules and round-robin, the 10-minute rule, tasks and calls, reminders, notifications
 // (SRS §3, §4.8–4.10). Runs in tenant B (no seat limit), which the other test files leave alone.
-describe('assignment, 10-minute rule, tasks, notifications', () => {
+describe('assignment, rotation, tasks, notifications', () => {
   let app: INestApplication;
   let jobs: TaskJobs;
   let admin: Client;
@@ -93,46 +93,94 @@ describe('assignment, 10-minute rule, tasks, notifications', () => {
     });
   });
 
-  describe('10-minute rule (SRS §3.4–3.7)', () => {
+  describe('rotation (Global Configuration › Leads, replaces the 10-minute rule)', () => {
     const expire = (leadId: string) => ownerQuery(`UPDATE leads SET response_due_at = now() - interval '1 minute' WHERE id = $1 AND response_due_at IS NOT NULL`, [leadId]);
     const owner = async (leadId: string) => (await admin.get(`/api/v1/leads/${leadId}`).expect(200)).body;
+    let ruleId: string;
+    const features = async (value: Record<string, unknown>) => {
+      const current = (await admin.get('/api/v1/settings/leads.features').expect(200)).body.value;
+      await admin.put('/api/v1/settings/leads.features').send({ value: { ...current, ...value } }).expect(200);
+    };
 
-    it('moves to the next agent in the team, then to the Admin once the whole team missed it', async () => {
-      const lead = await createLead({ ownerUserId: agents[0]!.id });
-      expect(lead.responseDueAt).not.toBeNull();
+    beforeAll(async () => {
+      const rules = (await admin.get('/api/v1/assignment-rules').expect(200)).body.data as { id: string; name: string }[];
+      ruleId = rules.find((r) => r.name === 'Meta to B Sales')!.id;
+    });
+
+    it('rules carry the shift, rotation minutes, maximum rotations and fallback; they are checked', async () => {
+      const res = await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ rotationMinutes: 15, maxRotations: 2, fallback: 'admin' }).expect(200);
+      expect(res.body).toMatchObject({ shiftDays: [0, 1, 2, 3, 4, 5, 6], shiftStart: null, shiftEnd: null, timezone: null, rotationMinutes: 15, maxRotations: 2, fallback: 'admin' });
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ shiftStart: '09:00' }).expect(400);
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ fallback: 'user' }).expect(400);
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ timezone: 'Mars/Base' }).expect(400);
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ shiftDays: [] }).expect(400);
+    });
+
+    it('rotates to the next agent of the rule, up to the maximum, then the fallback takes the lead', async () => {
+      const lead = await createLead();
+      expect(lead.ownerUserId).not.toBeNull();
+      expect(Date.parse(lead.responseDueAt) - Date.now()).toBeGreaterThan(14 * 60_000);
 
       await expire(lead.id);
       await jobs.responseTimer();
       const second = await owner(lead.id);
-      expect(second.ownerUserId).not.toBe(agents[0]!.id);
+      expect(second.ownerUserId).not.toBe(lead.ownerUserId);
       expect(second.responseDueAt).not.toBeNull();
 
       await expire(lead.id);
       await jobs.responseTimer();
       const third = await owner(lead.id);
-      expect([agents[0]!.id, second.ownerUserId]).not.toContain(third.ownerUserId);
+      expect([lead.ownerUserId, second.ownerUserId]).not.toContain(third.ownerUserId);
 
       await expire(lead.id);
       await jobs.responseTimer();
-      const fallback = await owner(lead.id);
-      expect(fallback).toMatchObject({ ownerUserId: USERS.adminB.id, responseDueAt: null });
+      expect(await owner(lead.id)).toMatchObject({ ownerUserId: USERS.adminB.id, responseDueAt: null });
 
       const log = await ownerQuery<{ method: string }>(`SELECT method FROM lead_assignments WHERE lead_id = $1 ORDER BY changed_at`, [lead.id]);
-      expect(log.map((l) => l.method)).toEqual(['manual', 'no_response', 'no_response', 'admin_fallback']);
+      expect(log.map((l) => l.method)).toEqual(['rule', 'no_response', 'no_response', 'admin_fallback']);
       const notes = await admin.get('/api/v1/notifications?unread=true').expect(200);
       expect(notes.body.data.map((n: { type: string }) => n.type)).toContain('lead_admin_fallback');
-      const missed = await agents[0]!.client.get('/api/v1/notifications').expect(200);
-      expect(missed.body.data.map((n: { type: string }) => n.type)).toContain('lead_no_response');
       const timeline = await admin.get(`/api/v1/leads/${lead.id}/timeline?types=owner_change`).expect(200);
-      expect(timeline.body.data[0].summary).toMatch(/Whole team did not respond/);
+      expect(timeline.body.data[0].summary).toMatch(/Rotation finished/);
     });
 
-    it('a call logged by the owner in time stops the timer', async () => {
-      const lead = await createLead({ ownerUserId: agents[1]!.id });
-      await agents[1]!.client.post(`/api/v1/leads/${lead.id}/calls`).send({ outcome: 'answered', note: 'Interested in 2BR' }).expect(201);
+    it('fallback "unassigned" puts the lead back in the queue', async () => {
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ maxRotations: 0, fallback: 'unassigned' }).expect(200);
+      const lead = await createLead();
+      await expire(lead.id);
+      await jobs.responseTimer();
+      expect(await owner(lead.id)).toMatchObject({ ownerUserId: null, responseDueAt: null });
+    });
+
+    it('a call logged by the owner in time stops the timer; a manual owner has no timer', async () => {
+      const lead = await createLead();
+      const agent = agents.find((a) => a.id === lead.ownerUserId)!;
+      await agent.client.post(`/api/v1/leads/${lead.id}/calls`).send({ outcome: 'answered', note: 'Interested in 2BR' }).expect(201);
       await expire(lead.id); // no effect: the timer was already cleared
       await jobs.responseTimer();
-      expect((await owner(lead.id)).ownerUserId).toBe(agents[1]!.id);
+      expect((await owner(lead.id)).ownerUserId).toBe(agent.id);
+      expect((await createLead({ ownerUserId: agents[1]!.id })).responseDueAt).toBeNull();
+    });
+
+    it('outside the shift the rule does not assign, and an unanswered lead waits for the shift', async () => {
+      const lead = await createLead();
+      const today = new Date().getUTCDay();
+      const tomorrow = (today + 1) % 7;
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ shiftDays: [tomorrow], timezone: 'UTC' }).expect(200);
+      expect((await createLead()).ownerUserId).toBeNull();
+      await expire(lead.id);
+      await jobs.responseTimer();
+      const waiting = await owner(lead.id);
+      expect(waiting.ownerUserId).toBe(lead.ownerUserId);
+      expect(Date.parse(waiting.responseDueAt)).toBeGreaterThan(Date.now());
+      await admin.patch(`/api/v1/assignment-rules/${ruleId}`).send({ shiftDays: [0, 1, 2, 3, 4, 5, 6], timezone: null, maxRotations: 3, fallback: 'admin' }).expect(200);
+    });
+
+    it('with Rotation off new leads stay Unassigned', async () => {
+      await features({ rotation: false });
+      expect((await createLead()).ownerUserId).toBeNull();
+      await features({ rotation: true });
+      expect((await createLead()).ownerUserId).not.toBeNull();
     });
   });
 

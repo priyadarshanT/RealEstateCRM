@@ -12,7 +12,9 @@ Based on the developer requirements brief (29 September 2026), stakeholder feedb
 | 1 | Settings & Integrations is replaced by **Global Configuration** | Section 11: one page with Module Settings (16 cards), Integration (12 cards in 3 tabs) and Communication (3 cards). The old page is removed. |
 | 2 | Lead stages become four fixed **statuses** with **substatuses** | Hot, Warm, Cold, Sale Done replace the 15 stages. Only the Admin manages substatuses. Every new lead starts as Warm. Existing leads moved: Won → Sale Done; Lost → Cold / Not Interested; Invalid → Cold / Invalid / Out of Service; Hot, Qualified, Meeting, Viewing, EOI, Booked → Hot; the rest → Warm (history kept). |
 | 3 | Cold needs a substatus instead of a Lost / Invalid reason | Reasons remain for reassignment only. |
-| 4 | Lead switches, enforced by the server | Export Leads, Lead Source Update, Dual Lead Ownership (+ secondary owner notification), Past Date Selection, Hide Lead Contact Info (per role), Mandatory Location, Communication on Unassigned Leads. Exports and messages to unassigned leads are off by default. |
+| 4 | Lead switches, enforced by the server | Export Leads, Lead Source Update, Dual Lead Ownership (+ secondary owner notification), Past Date Selection, Hide Lead Contact Info (per role), Mandatory Location, Communication on Unassigned Leads, Rotation. Exports and messages to unassigned leads are off by default; Rotation is on. |
+| 5 | **Rotation replaces the assignment rules' round-robin and the 10-minute rule** (architect decision) | Each rotation rule: conditions, team or agents, shift days and hours, time zone, minutes before an unanswered lead rotates to the next agent, maximum rotations, fallback (Admin, Unassigned or a chosen user). A manually chosen owner has no timer. |
+| 6 | Migration, email, watermark | Migration: Excel template, status / substatus / owner / project / created date columns, skip or update known leads, batch ID with counts, retry without duplicates. Email: sender name, reply-to and signature. Watermark: applied on download to images and PDFs of the chosen kinds (local, no outside service). |
 
 ## What changed in version 1.2
 
@@ -166,9 +168,9 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 
 **New lead not answered: move to the next agent**
 
-4. When a new lead is assigned, the agent has **10 minutes** (adjustable) to act on it. Any logged action counts: call, note, message or stage change.
-5. If the agent does not act in time, the lead moves to the **next available agent in the same team**, who also gets 10 minutes.
-6. If **every agent in the team** misses it (for example, all 3 agents of a 3-agent team), the lead goes back to the **Admin**. The Admin becomes the owner, is notified, sees the full history of who missed it and when, and can work the lead or assign it to anyone.
+4. When a rotation rule assigns a new lead, the agent has the rule's minutes (10 by default) to act on it, then it rotates (Global Configuration › Leads › Rotation). Any logged action counts: call, note, message or status change.
+5. If the agent does not act in time, the lead rotates to the **next available agent of the same rule**, who gets the same time, up to the rule's maximum rotations and only during its shift (outside the shift the lead waits for it).
+6. After the last rotation, or when nobody is left, the rule's **fallback** takes the lead: the **Admin** (default), the Unassigned queue or a chosen user. They are notified, see the full history of who missed it and when, and can work the lead or assign it to anyone. A lead whose owner was chosen by hand has no timer.
 7. Each move is logged with the reason "No response from agent", and the agent who missed it is told.
 
 **Meetings and viewings (no Zoom or Calendly subscription needed)**
@@ -273,12 +275,13 @@ The Team menu has three parts.
 1. **Global Configuration** (menu, Admin only) replaces Settings & Integrations. Three sections: **Module Settings**, **Integration**, **Communication**. Cards: wide, rounded, coloured icon, title and description; the whole card opens its page. 4 columns on desktop, 2 on tablet, 1 on mobile.
 2. Each module page has a title, description, Back, **Save Changes** and **Cancel**, and warns before leaving with unsaved changes. Switches are labelled On / Off; dependent fields appear only when relevant.
 3. Module cards: General, Security, Attendance, Leads, Data, Projects and Properties, Locality, QR Code, Tags, Manage Marketing, Migration, Manage Status, Listing Management, Automation, Manage Source, Dev Resources. Modules without an agreed scope are shown as "Not available yet", never as finished.
-4. **General:** call notifications and call detection (need a calling integration), default country (name, ISO code, dial code), default currency (no silent conversion), watermark (text or logo, opacity, placement, preview, file types), currencies and exchange rates, invoice numbering.
+4. **General:** call notifications and call detection (need a calling integration), default country (name, ISO code, dial code), default currency (no silent conversion), watermark (text or logo, opacity, placement, preview, file types; stamped on download, the original file never changes), currencies and exchange rates, invoice numbering.
+4a. **Migration:** download the Excel template; map Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date; preview with checks; choose to skip or update leads that already exist; each import is a batch with an ID and counts (new, updated, skipped, rejected) and an error report; a failed batch can be retried without duplicates.
 5. **Security:** require two-factor sign-in, allow copy and paste (Admins keep it), disable screenshots (not possible in web browsers; saved for a mobile app).
-6. **Leads:** the switches in the update table above, plus response time (10 minutes by default), lead score weights, assignment rules and reassignment reasons. Rotation follows in a later update.
+6. **Leads:** the switches in the update table above, plus rotation rules, lead score weights and reassignment reasons. **Dual Lead Ownership:** a secondary owner (never the owner) sees and edits the lead and, when the notification switch is on, hears about status changes, owner changes and re-enquiries.
 7. **Manage Status:** Hot, Warm (open; need a next follow-up), Cold (closed; needs a substatus), Sale Done (won). Substatuses: name, order, active, requires scheduling (a date and time is then required). Names are unique per status; a substatus a lead has used cannot be deleted, only turned off.
 8. **Integration:** 3rd Parties (Webhook, Skyloov, Dubizzle, Bayut, Property Finder), Social Platforms (WhatsApp, Facebook), Others (Gmail, Google Ads Landing Page, Google Ads Lead Form, Google Campaign, Microsoft Ads). A card shows Connected only when the connection reports it, with Manage, Test Connection, Disconnect, last sync and errors. Failed incoming data is retried automatically, then shown for manual retry. Cards without a connector say "Not available yet".
-9. **Communication:** Templates, IVR (not available yet), Email Configuration.
+9. **Communication:** Templates, IVR (not available yet), Email Configuration (sender, sender name, reply-to address, signature added to every email).
 10. Settings are per company, changed only by the Admin, enforced by the server, kept with a change history (who, when, before, after) and protected against two people saving at once.
 
 ---
@@ -411,7 +414,7 @@ The system is accepted when these pass on the test system:
 3. A repeat enquiry from an existing contact is added to the existing lead, stays with the same agent, and the agent gets a "Re-enquired" notification.
 4. A lead missing from the CRM but present in Meta is found and recovered.
 5. Leads are assigned correctly by round-robin and rules, skipping unavailable agents and agents with assignment turned off.
-6. A lead not answered in 10 minutes moves to the next agent in the team; when the whole team misses it, it goes to the Admin.
+6. A lead not answered within its rotation rule's minutes rotates to the next agent of the rule; after the maximum rotations the fallback (Admin by default) takes it.
 7. A shared lead is visible to the secondary user, who can only edit when given "Can edit" access.
 8. A client books through the CRM booking page; the Google Meet / Teams link, calendar entry and confirmation are created, and changes update the lead.
 9. An opted-out contact is left out of a bulk campaign.

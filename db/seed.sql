@@ -109,6 +109,5 @@ BEGIN
    (p_tenant,'manual','Manual entry',50),(p_tenant,'import','Excel / CSV import',40);
   INSERT INTO tenant_currencies (tenant_id, currency) VALUES (p_tenant,'AED');
   INSERT INTO tenant_settings (tenant_id, key, value) VALUES
-   (p_tenant,'leads.response_time','{"minutes":10,"next_agent_scope":"team","fallback":"admin"}'),
    (p_tenant,'leads.scoring','{"budget_fit":30,"project_match":20,"source_quality":20,"engagement":30}');
 END $$;

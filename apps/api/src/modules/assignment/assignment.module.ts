@@ -6,7 +6,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { AssignmentController } from './assignment.controller';
 import { AssignmentService } from './assignment.service';
 
-/** Round-robin and rule-based assignment, unassigned queue, 10-minute rule escalation (SRS §3.4–3.7, §4.8–4.10). */
+/** Rotation rules: assignment by shift, rotation of unanswered leads and fallback (Global Configuration › Leads). */
 @Module({
   imports: [LeadsModule, OrganizationModule, SettingsModule, AttendanceModule],
   controllers: [AssignmentController],

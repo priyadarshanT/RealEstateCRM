@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Loading } from '@crm/ui';
+import { Loading } from '@crm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/core/api';
 import { AssignmentTab } from './assignment-tab';
@@ -17,11 +17,13 @@ type Features = {
   hide_contact_info: { enabled: boolean; role_keys: string[] };
   mandatory_location: boolean;
   unassigned_communication: boolean;
+  rotation: boolean;
 };
 
 /**
  * Global Configuration › Leads (§6): lead feature switches (enforced by the API), then the lead rules that were on
- * the old settings page: response time, scoring weights, assignment rules and reassignment reasons.
+ * the old settings page: rotation rules (which replaced assignment rules and the 10-minute rule), scoring weights and
+ * reassignment reasons.
  */
 export function LeadsPage() {
   const s = useSettingDraft<Features>('leads.features');
@@ -61,7 +63,7 @@ export function LeadsPage() {
             description="A lead can have a primary and a secondary owner (never the same person)."
             checked={d.dual_ownership}
             onChange={(v) => s.set({ dual_ownership: v, ...(v ? {} : { secondary_owner_notification: false }) })}
-            note="The secondary owner field arrives with the Lead page update."
+            note="Set the secondary owner on the lead page. They see and edit the lead like a share with Can edit."
           >
             <SwitchRow
               title="Enable Secondary Owner Notification"
@@ -123,22 +125,23 @@ export function LeadsPage() {
             checked={d.unassigned_communication}
             onChange={(v) => s.set({ unassigned_communication: v })}
           />
-          <div className="flex items-start justify-between gap-4 py-4 opacity-70">
-            <div>
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                Rotation <Badge tone="neutral">Not available yet</Badge>
-              </p>
-              <p className="mt-0.5 text-sm text-muted-foreground">Rotate unanswered leads between agents by shift, interval and number of rotations.</p>
-            </div>
-          </div>
+          <SwitchRow
+            title="Rotation"
+            description="New leads go to agents by the rotation rules below; a lead nobody answers in time rotates to the next agent, then to the fallback. When off, new leads wait in Unassigned."
+            checked={d.rotation}
+            onChange={(v) => s.set({ rotation: v })}
+          />
         </Section>
       )}
 
-      <Section title="Response time and lead score" description="These save on their own with their Save buttons.">
-        <LeadRules />
-      </Section>
-      <Section title="Assignment rules" description="Who receives new leads. Rules are tried top to bottom; leads that match none go to Unassigned.">
+      <Section
+        title="Rotation rules"
+        description="Each rule: which leads, which team or agents, its shift, minutes before an unanswered lead rotates, how many rotations, then the fallback. Rules are tried top to bottom; leads that match none go to Unassigned. These save on their own."
+      >
         <AssignmentTab />
+      </Section>
+      <Section title="Lead score" description="Saves on its own with its Save button.">
+        <LeadRules />
       </Section>
       <ReasonsCard />
     </ConfigShell>

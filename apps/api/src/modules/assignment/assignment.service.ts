@@ -8,17 +8,21 @@ import { EventBus } from '../../core/events/domain-events';
 import { LeaveService } from '../attendance/leave.service';
 import { LeadsService } from '../leads/leads.service';
 import { OrganizationDirectory, UserSummary } from '../organization/directory.service';
+import { OrganizationService } from '../organization/organization.service';
 import { LeadConfigService } from '../settings/lead-config.service';
 import { assignmentRuleMembers, assignmentRules, RuleConditions, RuleRow } from './assignment.schema';
 import { AssignmentStrategy, isAvailable, RoundRobinStrategy } from './assignment.strategy';
+import { inShift, nextShiftStart, Shift } from './shift';
 import { AssignmentRuleDto, AssignmentRuleInputDto, RuleConditionsDto } from './dto/rule.dto';
 
 /**
- * Lead assignment (SRS §3.4–3.7, §4.8–4.10):
- * - new leads (and re-enquiries whose agent is gone) go through the rules top to bottom; the first rule that
- *   matches picks the next available agent round-robin from its team or members; no match → Unassigned;
- * - the 10-minute rule moves a lead nobody acted on to the next available agent in the same team, and once the
- *   whole team has missed it, to the Admin.
+ * Rotation (Global Configuration › Leads, replaces the assignment rules' round-robin and the 10-minute rule):
+ * - new leads (and re-enquiries whose agent is gone) go through the rotation rules top to bottom; the first rule
+ *   that matches and is in its shift picks the next available agent round-robin from its team or agents;
+ *   no match → Unassigned;
+ * - an agent who does not act within the rule's minutes loses the lead to the next agent of the same rule, up to
+ *   the rule's maximum rotations; then the fallback takes it (Admin, Unassigned or a chosen user);
+ * - outside the shift the lead waits for the shift to start; with Rotation off nothing is assigned or rotated.
  */
 @Injectable()
 export class AssignmentService implements OnModuleInit {
@@ -33,6 +37,7 @@ export class AssignmentService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly events: EventBus,
     private readonly leave: LeaveService,
+    private readonly organization: OrganizationService,
   ) {}
 
   onModuleInit(): void {
@@ -51,9 +56,12 @@ export class AssignmentService implements OnModuleInit {
   async autoAssign(leadId: string, excludeUserIds: string[], method?: 're_enquiry' | 'user_deactivated'): Promise<string | undefined> {
     const facts = await this.leads.assignmentFacts(leadId);
     if (!facts || facts.lead.stageCategory !== 'open' || facts.lead.deletedAt) return undefined;
+    if (!(await this.leads.features()).rotation) return undefined;
     const rules = await this.db.current.select().from(assignmentRules).where(eq(assignmentRules.isActive, true)).orderBy(asc(assignmentRules.priority));
+    const timeZone = await this.companyTimeZone();
     for (const rule of rules) {
       if (!matches(rule.conditions, facts.lead, facts.projectIds)) continue;
+      if (!inShift(shiftOf(rule, timeZone))) continue;
       const candidates = (await this.poolOf(rule)).filter((u) => !excludeUserIds.includes(u.id) && (!rule.respectAvailability || isAvailable(u)));
       // Agents on approved leave today do not get new leads (SRS §9.6).
       const away = rule.respectAvailability ? await this.leave.onLeave(candidates.map((u) => u.id)) : new Set<string>();
@@ -61,38 +69,72 @@ export class AssignmentService implements OnModuleInit {
       const chosen = this.strategy.pick(pool, rule.lastAssignedUserId);
       if (!chosen) continue;
       await this.db.current.update(assignmentRules).set({ lastAssignedUserId: chosen.id }).where(eq(assignmentRules.id, rule.id));
-      await this.leads.changeOwner(leadId, chosen.id, { method: method ?? (hasConditions(rule.conditions) ? 'rule' : 'round_robin'), ruleId: rule.id });
+      await this.leads.changeOwner(leadId, chosen.id, {
+        method: method ?? (hasConditions(rule.conditions) ? 'rule' : 'round_robin'),
+        ruleId: rule.id,
+        rotation: { ruleId: rule.id, count: 0, minutes: rule.rotationMinutes },
+      });
       return chosen.id;
     }
     return undefined;
   }
 
   /**
-   * 10-minute rule (SRS §3.5–3.7): the owner did not act in time. Next available agent in the same team who has
-   * not missed it yet; when the whole team has missed it, the Admin becomes the owner (no timer).
+   * Rotation: the owner did not act within the rule's minutes. Next available agent of the same rule who has not
+   * missed the lead yet, until the rule's maximum rotations; then the rule's fallback.
    */
   async escalate(leadId: string, missedUserId: string): Promise<void> {
     const lead = await this.leads.findRow(leadId);
     if (!lead || lead.ownerUserId !== missedUserId || !lead.responseDueAt || lead.stageCategory !== 'open' || lead.deletedAt) return;
-    const missed = new Set([...(await this.leads.missedBy(leadId)), missedUserId]);
-    const teamId = lead.teamId ?? (await this.directory.user(missedUserId))?.teamId ?? null;
-    const team = teamId ? await this.directory.teamMembers(teamId) : [];
-    const available = team.filter((u) => isAvailable(u) && !missed.has(u.id));
-    const away = await this.leave.onLeave(available.map((u) => u.id));
-    const candidates = available.filter((u) => !away.has(u.id));
-    const next = this.strategy.pick(candidates, missedUserId);
-    if (next) {
-      const reason = await this.config.reasonByKey('reassignment', 'no_response');
-      await this.leads.changeOwner(leadId, next.id, { method: 'no_response', reasonId: reason?.id ?? null, note: 'No response from agent' });
-      return;
+    const rule = lead.rotationRuleId ? await this.findOptional(lead.rotationRuleId) : undefined;
+    if (!rule || !(await this.leads.features()).rotation) return this.leads.clearResponseTimer(leadId);
+    const shift = shiftOf(rule, await this.companyTimeZone());
+    if (!inShift(shift)) return this.leads.postponeResponse(leadId, nextShiftStart(shift));
+
+    const reason = await this.config.reasonByKey('reassignment', 'no_response');
+    if (lead.rotationCount < rule.maxRotations) {
+      const missed = new Set([...(await this.leads.missedBy(leadId)), missedUserId]);
+      const available = (await this.poolOf(rule)).filter((u) => (!rule.respectAvailability || isAvailable(u)) && !missed.has(u.id));
+      const away = rule.respectAvailability ? await this.leave.onLeave(available.map((u) => u.id)) : new Set<string>();
+      const next = this.strategy.pick(available.filter((u) => !away.has(u.id)), missedUserId);
+      if (next) {
+        await this.leads.changeOwner(leadId, next.id, {
+          method: 'no_response',
+          ruleId: rule.id,
+          reasonId: reason?.id ?? null,
+          note: `No response from agent (rotation ${lead.rotationCount + 1} of ${rule.maxRotations})`,
+          rotation: { ruleId: rule.id, count: lead.rotationCount + 1, minutes: rule.rotationMinutes },
+        });
+        return;
+      }
     }
-    const admin = (await this.directory.admins())[0];
-    if (!admin) {
-      this.logger.warn(`lead ${leadId}: no admin to fall back to`);
-      return;
-    }
+    await this.fallback(leadId, rule);
+  }
+
+  /** After the last rotation: the Admin, the Unassigned queue or the chosen user takes the lead (no timer). */
+  private async fallback(leadId: string, rule: RuleRow): Promise<void> {
     const reason = await this.config.reasonByKey('reassignment', 'admin_fallback');
-    await this.leads.changeOwner(leadId, admin.id, { method: 'admin_fallback', reasonId: reason?.id ?? null, note: 'Whole team did not respond' });
+    const note = 'Rotation finished: nobody responded';
+    if (rule.fallback === 'unassigned') {
+      await this.leads.changeOwner(leadId, null, { method: 'admin_fallback', ruleId: rule.id, reasonId: reason?.id ?? null, note });
+      return;
+    }
+    const user = rule.fallback === 'user' && rule.fallbackUserId ? await this.directory.user(rule.fallbackUserId) : undefined;
+    const target = user && user.status === 'active' ? user : (await this.directory.admins())[0];
+    if (!target) {
+      this.logger.warn(`lead ${leadId}: no admin to fall back to`);
+      return this.leads.clearResponseTimer(leadId);
+    }
+    await this.leads.changeOwner(leadId, target.id, { method: 'admin_fallback', ruleId: rule.id, reasonId: reason?.id ?? null, note });
+  }
+
+  private async companyTimeZone(): Promise<string> {
+    return (await this.organization.getProfile(this.db.currentTenantId!)).timezone ?? 'Asia/Dubai';
+  }
+
+  private async findOptional(id: string): Promise<RuleRow | undefined> {
+    const [rule] = await this.db.current.select().from(assignmentRules).where(eq(assignmentRules.id, id)).limit(1);
+    return rule;
   }
 
   private async poolOf(rule: RuleRow): Promise<UserSummary[]> {
@@ -112,6 +154,7 @@ export class AssignmentService implements OnModuleInit {
     if (!body.name) throw Problems.validation([{ field: 'name', message: 'name is required' }]);
     if (!body.conditions) throw Problems.validation([{ field: 'conditions', message: 'conditions are required' }]);
     this.assertPool(body.targetTeamId ?? null, body.memberUserIds ?? []);
+    const rotation = checkRotation(body, undefined);
     const tenantId = this.db.currentTenantId!;
     const count = await this.ruleCount();
     const priority = Math.min(body.priority ?? count + 1, count + 1);
@@ -127,6 +170,7 @@ export class AssignmentService implements OnModuleInit {
         targetTeamId: body.targetTeamId ?? null,
         respectAvailability: body.respectAvailability ?? true,
         isActive: body.isActive ?? true,
+        ...rotation,
       })
       .returning()
       .catch(rethrowReference);
@@ -140,6 +184,7 @@ export class AssignmentService implements OnModuleInit {
     const targetTeamId = body.targetTeamId !== undefined ? body.targetTeamId : before.targetTeamId;
     const members = body.memberUserIds ?? (await this.membersOf([id])).get(id) ?? [];
     this.assertPool(targetTeamId, members);
+    const rotation = checkRotation(body, before);
     if (body.priority !== undefined && body.priority !== before.priority) await this.move(id, body.priority);
     const [after] = await this.db.current
       .update(assignmentRules)
@@ -149,6 +194,7 @@ export class AssignmentService implements OnModuleInit {
         ...(body.targetTeamId !== undefined ? { targetTeamId: body.targetTeamId } : {}),
         ...(body.respectAvailability !== undefined ? { respectAvailability: body.respectAvailability } : {}),
         ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        ...rotation,
         updatedAt: new Date(),
       })
       .where(eq(assignmentRules.id, id))
@@ -252,7 +298,55 @@ function toStored(c: RuleConditionsDto): RuleConditions {
 }
 
 function ruleAudit(r: RuleRow) {
-  return { name: r.name, priority: r.priority, conditions: r.conditions, targetTeamId: r.targetTeamId, respectAvailability: r.respectAvailability, isActive: r.isActive };
+  return {
+    name: r.name,
+    priority: r.priority,
+    conditions: r.conditions,
+    targetTeamId: r.targetTeamId,
+    respectAvailability: r.respectAvailability,
+    isActive: r.isActive,
+    shiftDays: r.shiftDays,
+    shiftStart: r.shiftStart,
+    shiftEnd: r.shiftEnd,
+    timezone: r.timezone,
+    rotationMinutes: r.rotationMinutes,
+    maxRotations: r.maxRotations,
+    fallback: r.fallback,
+    fallbackUserId: r.fallbackUserId,
+  };
+}
+
+function shiftOf(rule: RuleRow, companyTimeZone: string): Shift {
+  return { days: rule.shiftDays, start: rule.shiftStart, end: rule.shiftEnd, timeZone: rule.timezone ?? companyTimeZone };
+}
+
+/** Rotation fields of a create or update, checked together with what is stored. */
+function checkRotation(body: AssignmentRuleInputDto, before: RuleRow | undefined) {
+  const start = body.shiftStart !== undefined ? body.shiftStart : (before?.shiftStart ?? null);
+  const end = body.shiftEnd !== undefined ? body.shiftEnd : (before?.shiftEnd ?? null);
+  if ((start === null) !== (end === null)) throw Problems.validation([{ field: 'shiftEnd', message: 'set both shift start and end, or neither (all day)' }]);
+  if (start !== null && start === end) throw Problems.validation([{ field: 'shiftEnd', message: 'the shift must not start and end at the same time' }]);
+  const timezone = body.timezone !== undefined ? body.timezone : (before?.timezone ?? null);
+  if (timezone) {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: timezone });
+    } catch {
+      throw Problems.validation([{ field: 'timezone', message: 'unknown time zone, e.g. Asia/Dubai' }]);
+    }
+  }
+  const fallback = body.fallback ?? before?.fallback ?? 'admin';
+  const fallbackUserId = body.fallbackUserId !== undefined ? body.fallbackUserId : (before?.fallbackUserId ?? null);
+  if (fallback === 'user' && !fallbackUserId) throw Problems.validation([{ field: 'fallbackUserId', message: 'choose the user who gets the lead after the last rotation' }]);
+  return {
+    ...(body.shiftDays !== undefined ? { shiftDays: [...new Set(body.shiftDays)].sort() } : {}),
+    ...(body.shiftStart !== undefined ? { shiftStart: body.shiftStart } : {}),
+    ...(body.shiftEnd !== undefined ? { shiftEnd: body.shiftEnd } : {}),
+    ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+    ...(body.rotationMinutes !== undefined ? { rotationMinutes: body.rotationMinutes } : {}),
+    ...(body.maxRotations !== undefined ? { maxRotations: body.maxRotations } : {}),
+    ...(body.fallback !== undefined ? { fallback: body.fallback } : {}),
+    ...(fallback === 'user' ? (body.fallbackUserId !== undefined ? { fallbackUserId: body.fallbackUserId } : {}) : { fallbackUserId: null }),
+  };
 }
 
 function rethrowReference(err: unknown): never {

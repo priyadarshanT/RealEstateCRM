@@ -14,7 +14,7 @@ const WEIGHTS: { key: keyof Scoring; label: string }[] = [
   { key: 'engagement', label: 'Engagement' },
 ];
 
-/** Response time (10-minute rule, SRS §3.4) and lead scoring weights (§2.24), shown under Global Configuration › Leads. */
+/** Lead scoring weights (SRS §2.24), shown under Global Configuration › Leads. Response time is part of each rotation rule. */
 export function LeadRules() {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['settings'], queryFn: async () => unwrap(await api.GET('/settings')).data });
@@ -25,13 +25,8 @@ export function LeadRules() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   });
 
-  const response = value('leads.response_time');
   const scoring = value('leads.scoring') as Scoring | undefined;
-  const [minutes, setMinutes] = useState('10');
   const [weights, setWeights] = useState<Scoring>({ budget_fit: 30, project_match: 20, source_quality: 20, engagement: 30 });
-  useEffect(() => {
-    if (response?.minutes) setMinutes(String(response.minutes));
-  }, [response?.minutes]);
   useEffect(() => {
     if (scoring) setWeights(scoring);
   }, [scoring?.budget_fit, scoring?.project_match, scoring?.source_quality, scoring?.engagement]);
@@ -40,31 +35,7 @@ export function LeadRules() {
   if (settings.isLoading) return <Loading />;
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Card>
-        <CardHeader title="Response time" />
-        <CardBody className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            An agent has this long to act on a new lead (call, note, message or stage change). Then it moves to the next agent in the same team; if the whole team misses it, the Admin
-            decides.
-          </p>
-          <form
-            className="flex items-end gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              put.mutate({ key: 'leads.response_time', value: { minutes: Number(minutes), next_agent_scope: 'team', fallback: 'admin' } });
-            }}
-          >
-            <Field label="Minutes">
-              <Input type="number" min={1} max={1440} className="w-28" value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-            </Field>
-            <Button type="submit" disabled={put.isPending || Number(minutes) === response?.minutes}>
-              Save
-            </Button>
-          </form>
-        </CardBody>
-      </Card>
-
+    <div className="grid gap-3">
       <Card>
         <CardHeader title="Lead scoring weights" />
         <CardBody className="space-y-3">
@@ -84,8 +55,8 @@ export function LeadRules() {
           </div>
         </CardBody>
       </Card>
-      {put.error ? <Alert className="lg:col-span-2">{errorMessage(put.error)}</Alert> : null}
-      {put.isSuccess ? <Alert tone="success" className="lg:col-span-2">Saved.</Alert> : null}
+      {put.error ? <Alert >{errorMessage(put.error)}</Alert> : null}
+      {put.isSuccess ? <Alert tone="success" >Saved.</Alert> : null}
     </div>
   );
 }

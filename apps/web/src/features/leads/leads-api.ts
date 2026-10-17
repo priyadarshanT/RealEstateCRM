@@ -80,6 +80,10 @@ export function useLeadMutations(id: string) {
         unwrap(await api.POST('/leads/{id}/priority', { params: { path: { id } }, body: { priority } })),
       ...done,
     }),
+    setSecondaryOwner: useMutation({
+      mutationFn: async (userId: string | null) => unwrap(await api.POST('/leads/{id}/secondary-owner', { params: { path: { id } }, body: { userId } })),
+      ...done,
+    }),
     assign: useMutation({
       mutationFn: async (body: Schemas['Assign']) => unwrap(await api.POST('/leads/{id}/assign', { params: { path: { id } }, body })),
       ...done,

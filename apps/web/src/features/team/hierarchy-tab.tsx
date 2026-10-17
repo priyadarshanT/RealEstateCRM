@@ -120,20 +120,17 @@ function AgentChip({ user }: { user: User }) {
   );
 }
 
-/** The 10-minute rule as configured in Settings → Response time (SRS §3.4–3.7). */
+/** How unanswered leads move on: the rotation rules of Global Configuration › Leads. */
 function ResponseRuleCard() {
-  const settings = useQuery({ queryKey: ['settings'], queryFn: async () => unwrap(await api.GET('/settings')).data });
-  const rule = settings.data?.find((s) => s.key === 'leads.response_time')?.value as { minutes?: number } | undefined;
-  const minutes = rule?.minutes ?? 10;
   const steps = [
-    `Assigned to an agent · ${minutes} min to act`,
-    `No action → moves to the next agent in the team · ${minutes} min`,
-    'No action → next available agent, until the whole team is tried',
-    'Nobody acted → Admin is notified and decides',
+    'A rotation rule gives the lead to an agent of its team · the rule sets the minutes to act',
+    'No action in time → it rotates to the next agent of the same rule',
+    'Rotations continue up to the rule’s maximum, only during its shift',
+    'Nobody acted → the rule’s fallback takes it (Admin, Unassigned or a chosen user)',
   ];
   return (
     <Card className="h-fit">
-      <CardHeader title={`If a new lead is not answered in ${minutes} minutes`} />
+      <CardHeader title="If a new lead is not answered in time" />
       <CardBody className="space-y-2">
         {steps.map((s, i) => (
           <div key={s} className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-sm">
@@ -141,7 +138,7 @@ function ResponseRuleCard() {
             {s}
           </div>
         ))}
-        <p className="rounded-md bg-primary/5 px-2.5 py-2 text-xs">Every move is logged: &quot;No response from agent&quot;. Change the time in Settings → Response time.</p>
+        <p className="rounded-md bg-primary/5 px-2.5 py-2 text-xs">Every move is logged: &quot;No response from agent&quot;. Change it in Global Configuration → Leads → Rotation rules.</p>
       </CardBody>
     </Card>
   );

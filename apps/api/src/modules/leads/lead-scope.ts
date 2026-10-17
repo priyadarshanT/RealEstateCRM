@@ -22,7 +22,10 @@ export class LeadScope {
   /** SQL condition: leads the principal may see (row-level security already limits to the tenant). */
   async visible(p: Principal): Promise<SQL | undefined> {
     if (p.dataScope === 'company') return undefined;
-    const shared = sql`EXISTS (SELECT 1 FROM ${leadShares} WHERE ${leadShares.leadId} = ${leads.id} AND ${leadShares.userId} = ${p.userId})`;
+    const shared = or(
+      sql`EXISTS (SELECT 1 FROM ${leadShares} WHERE ${leadShares.leadId} = ${leads.id} AND ${leadShares.userId} = ${p.userId})`,
+      eq(leads.secondaryOwnerUserId, p.userId),
+    );
     const own = eq(leads.ownerUserId, p.userId);
     if (p.dataScope === 'own') return or(own, shared);
     const teamIds = await this.directory.scopeTeamIds(p.userId, p.dataScope);
@@ -64,7 +67,7 @@ export class LeadScope {
   }
 
   /** The principal's access to each lead (undefined = not visible). */
-  async accessFor(p: Principal, rows: Pick<LeadRow, 'id' | 'ownerUserId' | 'teamId'>[]): Promise<Map<string, LeadAccess>> {
+  async accessFor(p: Principal, rows: (Pick<LeadRow, 'id' | 'ownerUserId' | 'teamId'> & { secondaryOwnerUserId?: string | null })[]): Promise<Map<string, LeadAccess>> {
     const result = new Map<string, LeadAccess>();
     if (!rows.length) return result;
     const teamIds = p.dataScope === 'team' || p.dataScope === 'division' ? new Set(await this.directory.scopeTeamIds(p.userId, p.dataScope)) : new Set<string>();
@@ -76,6 +79,7 @@ export class LeadScope {
     for (const row of rows) {
       if (row.ownerUserId === p.userId) result.set(row.id, 'owner');
       else if (p.dataScope === 'company' || (row.teamId && teamIds.has(row.teamId))) result.set(row.id, 'scope');
+      else if (row.secondaryOwnerUserId === p.userId) result.set(row.id, 'edit');
       else if (shareOf.has(row.id)) result.set(row.id, shareOf.get(row.id)!);
     }
     return result;

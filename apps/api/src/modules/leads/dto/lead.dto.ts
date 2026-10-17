@@ -16,6 +16,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
 import { IsDateOnly, IsUuid } from '../../../core/http/validators';
@@ -53,6 +54,7 @@ export class LeadDto {
   @ApiPropertyOptional({ format: 'uuid' }) primaryProjectId?: string;
   @ApiPropertyOptional(nullableUuid) ownerUserId!: string | null;
   @ApiPropertyOptional(nullableUuid) teamId!: string | null;
+  @ApiPropertyOptional({ ...nullableUuid, description: 'Dual Lead Ownership' }) secondaryOwnerUserId!: string | null;
   @ApiProperty({ format: 'uuid' }) stageId!: string;
   @ApiProperty({ enum: CATEGORIES }) stageCategory!: LeadRow['stageCategory'];
   @ApiPropertyOptional(nullableUuid) substatusId!: string | null;
@@ -91,6 +93,7 @@ export class LeadDto {
       primaryProjectId: projects?.primaryProjectId,
       ownerUserId: l.ownerUserId,
       teamId: l.teamId,
+      secondaryOwnerUserId: l.secondaryOwnerUserId,
       stageId: l.stageId,
       stageCategory: l.stageCategory,
       substatusId: l.substatusId,
@@ -204,6 +207,11 @@ export class AssignDto {
   @ApiProperty({ format: 'uuid' }) @IsUuid() toUserId!: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() reasonId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) note?: string;
+}
+
+/** POST /leads/{id}/secondary-owner: a user, or null to remove the secondary owner. */
+export class SecondaryOwnerDto {
+  @ApiProperty(nullableUuid) @ValidateIf((_, v) => v !== null) @IsUuid() userId!: string | null;
 }
 
 export class NoteDto {

@@ -916,8 +916,8 @@ paths:
       - Settings
       summary: List settings
       operationId: listSettings
-      description: 'Global Configuration. Keys: general.preferences, security.policy, leads.features,
-        leads.response_time, leads.scoring, finance.numbering. Settings never saved are listed with their default
+      description: 'Global Configuration. Keys: general.preferences, security.policy, leads.features
+        (with the Rotation switch), leads.scoring, finance.numbering. Settings never saved are listed with their default
         and an empty updatedAt.
 
 
@@ -2320,6 +2320,51 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooMany'
+  /leads/{id}/secondary-owner:
+    post:
+      tags:
+      - Leads
+      summary: Set or remove the secondary owner
+      operationId: setSecondaryOwner
+      description: 'Needs Dual Lead Ownership on (Global Configuration › Leads); never the owner. Owner or a manager
+        above them.
+
+
+        **Permission:** `leads.assign`'
+      x-permission: leads.assign
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              properties:
+                userId:
+                  oneOf:
+                  - type: string
+                    format: uuid
+                  - type: 'null'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /leads/{id}/shares:
     get:
       tags:
@@ -2568,6 +2613,38 @@ paths:
         '429':
           $ref: '#/components/responses/TooMany'
   /leads/imports:
+    get:
+      tags:
+      - Leads
+      summary: Import batches
+      operationId: listLeadImports
+      description: 'Newest first, with their counts (Global Configuration › Migration).
+
+
+        **Permission:** `leads.import`'
+      x-permission: leads.import
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadImport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
     post:
       tags:
       - Leads
@@ -2598,6 +2675,13 @@ paths:
                   type: object
                   additionalProperties:
                     type: string
+                duplicateMode:
+                  type: string
+                  enum:
+                  - re_enquiry
+                  - skip
+                  - update
+                  description: 'Known phone or email: re_enquiry (default, lead import), skip or update (migration)'
       responses:
         '201':
           description: OK
@@ -2607,6 +2691,32 @@ paths:
                 $ref: '#/components/schemas/LeadImport'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /leads/imports/template:
+    get:
+      tags:
+      - Leads
+      summary: Excel template for a migration
+      operationId: downloadLeadImportTemplate
+      description: 'Columns Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes,
+        Created Date, with an example row and a sheet of the valid statuses and substatuses.
+
+
+        **Permission:** `leads.import`'
+      x-permission: leads.import
+      responses:
+        '200':
+          description: Excel file
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2665,6 +2775,38 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /leads/imports/{id}/retry:
+    post:
+      tags:
+      - Leads
+      summary: Retry a failed import
+      operationId: retryLeadImport
+      description: 'Rows already imported are recognised, so a retry never creates duplicates.
+
+
+        **Permission:** `leads.import`'
+      x-permission: leads.import
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '202':
+          description: Import started again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadImport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '429':
           $ref: '#/components/responses/TooMany'
   /saved-filters:
@@ -11369,6 +11511,12 @@ components:
           - type: string
             format: uuid
           - type: 'null'
+        secondaryOwnerUserId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Dual Lead Ownership
         closeReasonId:
           oneOf:
           - type: string
@@ -11765,6 +11913,34 @@ components:
           - type: string
             format: uuid
           - type: 'null'
+        duplicateMode:
+          type: string
+          enum:
+          - re_enquiry
+          - skip
+          - update
+        rowsUpdated:
+          type: integer
+        rowsSkipped:
+          type: integer
+        attempts:
+          type: integer
+          description: Runs of this batch; a retry never creates duplicates
+        batchId:
+          type: string
+          description: Short batch ID shown to users
+        errorDetail:
+          oneOf:
+          - type: string
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          oneOf:
+          - type: string
+            format: date-time
+          - type: 'null'
       required:
       - id
       - fileId
@@ -11860,11 +12036,57 @@ components:
           type: boolean
         isActive:
           type: boolean
+        shiftDays:
+          type: array
+          description: Days the rule works, 0 = Sunday
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+        shiftStart:
+          oneOf:
+          - type: string
+            pattern: ^([01]\d|2[0-3]):[0-5]\d$
+          - type: 'null'
+          description: Empty with shiftEnd = all day
+        shiftEnd:
+          oneOf:
+          - type: string
+            pattern: ^([01]\d|2[0-3]):[0-5]\d$
+          - type: 'null'
+        timezone:
+          oneOf:
+          - type: string
+          - type: 'null'
+          description: Empty = company time zone
+        rotationMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Minutes an agent has to act before the lead rotates to the next agent
+        maxRotations:
+          type: integer
+          minimum: 0
+          maximum: 50
+        fallback:
+          type: string
+          enum:
+          - admin
+          - unassigned
+          - user
+          description: Where the lead goes after the last rotation
+        fallbackUserId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
       required:
       - id
       - name
       - priority
       - conditions
+      description: 'Rotation rule (Global Configuration › Leads › Rotation): replaces the 10-minute rule. Matches leads,
+        works in its shift, rotates unanswered leads between its agents and then hands them to the fallback.'
     Campaign:
       type: object
       properties:

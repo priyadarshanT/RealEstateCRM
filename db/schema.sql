@@ -678,13 +678,34 @@ CREATE TABLE assignment_rules (
   respect_availability boolean NOT NULL DEFAULT true,              -- Skip unavailable / on-leave agents
   last_assigned_user_id uuid,                                      -- Round-robin pointer
   is_active       boolean NOT NULL DEFAULT true,                   -- Active flag
+  shift_days      smallint[] NOT NULL DEFAULT '{0,1,2,3,4,5,6}' CHECK (shift_days <@ '{0,1,2,3,4,5,6}'::smallint[] AND cardinality(shift_days) > 0), -- Days the rule works (0 = Sunday)
+  shift_start     time,                                            -- Shift start (empty = all day)
+  shift_end       time,                                            -- Shift end (empty = all day)
+  timezone        text,                                            -- Shift time zone (empty = company time zone)
+  rotation_minutes smallint NOT NULL DEFAULT 10 CHECK (rotation_minutes BETWEEN 1 AND 1440), -- Minutes an agent has before the lead rotates
+  max_rotations   smallint NOT NULL DEFAULT 3 CHECK (max_rotations BETWEEN 0 AND 50), -- Rotations before the fallback
+  fallback        text NOT NULL DEFAULT 'admin' CHECK (fallback IN ('admin','unassigned','user')), -- Where the lead goes after the last rotation
+  fallback_user_id uuid,                                           -- Fallback user (fallback = user)
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
   updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
   UNIQUE (tenant_id, id),
   UNIQUE (tenant_id, priority) DEFERRABLE INITIALLY DEFERRED,
   FOREIGN KEY (tenant_id, target_team_id) REFERENCES teams(tenant_id, id),
-  FOREIGN KEY (tenant_id, last_assigned_user_id) REFERENCES users(tenant_id, id)
+  FOREIGN KEY (tenant_id, last_assigned_user_id) REFERENCES users(tenant_id, id),
+  CONSTRAINT assignment_rules_shift_check CHECK ((shift_start IS NULL) = (shift_end IS NULL)),
+  CONSTRAINT assignment_rules_fallback_user_check CHECK (fallback <> 'user' OR fallback_user_id IS NOT NULL),
+  CONSTRAINT assignment_rules_fallback_user_fk FOREIGN KEY (tenant_id, fallback_user_id) REFERENCES users(tenant_id, id)
 );
+
+-- Rotation and Dual Lead Ownership (migration 0007); added here because assignment_rules is created after leads.
+ALTER TABLE leads
+  ADD COLUMN rotation_rule_id uuid,                                -- Rotation rule that assigned the lead (drives its rotation)
+  ADD COLUMN rotation_count smallint NOT NULL DEFAULT 0 CHECK (rotation_count >= 0), -- Times the lead rotated to the next agent
+  ADD COLUMN secondary_owner_user_id uuid,                         -- Secondary owner (Dual Lead Ownership)
+  ADD CONSTRAINT leads_rotation_rule_fk FOREIGN KEY (tenant_id, rotation_rule_id) REFERENCES assignment_rules(tenant_id, id),
+  ADD CONSTRAINT leads_secondary_owner_fk FOREIGN KEY (tenant_id, secondary_owner_user_id) REFERENCES users(tenant_id, id),
+  ADD CONSTRAINT leads_secondary_owner_check CHECK (secondary_owner_user_id IS NULL OR secondary_owner_user_id IS DISTINCT FROM owner_user_id);
+CREATE INDEX leads_secondary_owner_idx ON leads (tenant_id, secondary_owner_user_id) WHERE secondary_owner_user_id IS NOT NULL;
 
 --- table assignment_rule_members | Assignment | Specific agents a rule rotates between (used when no target team is set).
 CREATE TABLE assignment_rule_members (
@@ -751,6 +772,10 @@ CREATE TABLE lead_imports (
   created_by      uuid NOT NULL,                                   -- Who started the import
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Started time
   completed_at    timestamptz,                                     -- Finished time
+  duplicate_mode  text NOT NULL DEFAULT 're_enquiry' CHECK (duplicate_mode IN ('re_enquiry','skip','update')), -- Known phone or email: re-enquiry (lead import), skip or update (migration)
+  rows_updated    integer NOT NULL DEFAULT 0 CHECK (rows_updated >= 0), -- Existing leads updated (duplicate_mode = update)
+  rows_skipped    integer NOT NULL DEFAULT 0 CHECK (rows_skipped >= 0), -- Existing leads left as they were (duplicate_mode = skip)
+  attempts        smallint NOT NULL DEFAULT 1 CHECK (attempts >= 1), -- Runs of this batch (a retry never creates duplicates)
   UNIQUE (tenant_id, id),
   CHECK ((status IN ('completed','failed')) = (completed_at IS NOT NULL)),
   FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id),

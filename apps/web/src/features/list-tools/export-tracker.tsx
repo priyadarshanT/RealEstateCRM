@@ -48,7 +48,16 @@ export function ExportTrackerButton({ kind, columnLabels, canExport, openSignal 
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <History /> Export Tracker
-        {list.data ? <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">{list.data.page.total ?? list.data.data.length}</span> : null}
+        {list.data ? (
+          <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">{list.data.page.total ?? list.data.data.length}</span>
+        ) : list.error ? (
+          // The count could not load: show that instead of a wrong zero; the history dialog offers Retry.
+          <span className="rounded-full bg-danger/10 px-1.5 text-xs text-danger" title="Count could not load">
+            !
+          </span>
+        ) : (
+          <span className="px-1.5 text-xs text-muted-foreground">…</span>
+        )}
         {pending ? <span className="size-2 animate-pulse rounded-full bg-amber-500" aria-label="Exports in progress" /> : null}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -72,7 +81,7 @@ export function ExportTrackerButton({ kind, columnLabels, canExport, openSignal 
                   <Th>Requested</Th>
                   <Th>Scope</Th>
                   <Th>Columns</Th>
-                  <Th>Records</Th>
+                  <Th>{kind === 'lead' ? 'Lead count' : 'Project count'}</Th>
                   <Th>Status</Th>
                   <Th />
                 </tr>

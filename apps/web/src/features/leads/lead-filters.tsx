@@ -2,13 +2,11 @@
 
 import { Button, Input, Select } from '@crm/ui';
 import { X } from 'lucide-react';
-import { DATE_PRESETS, type DatePreset } from '@/core/date-range';
 import { useCampaigns, useProjectList, useSources, useStages, useTeams, useUsers } from '@/core/lookups';
 import { useCan } from '@/core/session';
 
 /** Filter values held by the lead list. Turned into GET /leads query parameters by the screen. */
 export interface LeadFilterState {
-  datePreset: DatePreset;
   sourceId?: string;
   projectId?: string;
   campaignId?: string;
@@ -19,7 +17,7 @@ export interface LeadFilterState {
   budgetMax?: string;
 }
 
-export const EMPTY_FILTERS: LeadFilterState = { datePreset: 'any' };
+export const EMPTY_FILTERS: LeadFilterState = {};
 
 export function LeadFilters({ value, onChange }: { value: LeadFilterState; onChange: (v: LeadFilterState) => void }) {
   const can = useCan();
@@ -31,17 +29,10 @@ export function LeadFilters({ value, onChange }: { value: LeadFilterState; onCha
   const teams = useTeams();
   const set = (patch: Partial<LeadFilterState>) => onChange({ ...value, ...patch });
   const opt = (v: string) => v || undefined;
-  const active = Object.entries(value).some(([k, v]) => (k === 'datePreset' ? v !== 'any' : !!v));
+  const active = Object.values(value).some((v) => !!v);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select className="h-8 w-auto text-xs" value={value.datePreset} onChange={(e) => set({ datePreset: e.target.value as DatePreset })} aria-label="Created">
-        {DATE_PRESETS.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.key === 'any' ? 'Created: any time' : p.label}
-          </option>
-        ))}
-      </Select>
       <Select className="h-8 w-auto text-xs" value={value.sourceId ?? ''} onChange={(e) => set({ sourceId: opt(e.target.value) })} aria-label="Source">
         <option value="">Source</option>
         {sources.data?.map((s) => (

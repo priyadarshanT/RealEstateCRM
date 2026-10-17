@@ -29,23 +29,11 @@ import { DocumentsService } from '../finance/documents.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UnitsService } from '../projects/units.service';
 import { CampaignsService } from '../messaging/campaigns.service';
+import { exportLogs } from './export-logs.schema';
+import { LEAD_LIST_EXPORT, LeadExportsService } from './lead-exports';
 import { ReportColumn, reportDefinitions, ReportDefinition } from './report-definitions';
 
-// export_logs (db/schema.sql, Reports): every export with user, report, filters, format, rows and time.
-export const exportLogs = pgTable('export_logs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').notNull(),
-  userId: uuid('user_id').notNull(),
-  reportKey: text('report_key').notNull(),
-  filters: jsonb('filters').$type<Record<string, unknown>>().notNull().default({}),
-  format: text('format').$type<'xlsx' | 'csv'>().notNull(),
-  status: text('status').$type<'queued' | 'running' | 'completed' | 'failed'>().notNull().default('queued'),
-  rowCount: integer('row_count'),
-  fileId: uuid('file_id'),
-  errorDetail: text('error_detail'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-});
+export { exportLogs };
 type ExportRow = typeof exportLogs.$inferSelect;
 
 // ---------------------------------------------------------------- DTOs
@@ -83,7 +71,7 @@ export class ExportDto {
   @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
   @ApiProperty() reportKey!: string;
   @ApiProperty({ enum: ['xlsx', 'csv'] }) format!: 'xlsx' | 'csv';
-  @ApiProperty({ enum: ['queued', 'running', 'completed', 'failed'] }) status!: ExportRow['status'];
+  @ApiProperty({ enum: ['queued', 'running', 'completed', 'failed', 'expired'] }) status!: ExportRow['status'];
   @ApiPropertyOptional({ type: Number, nullable: true }) rowCount!: number | null;
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Time-limited link, present when completed' }) downloadUrl!: string | null;
   @ApiProperty({ format: 'date-time', readOnly: true }) createdAt!: string;
@@ -100,6 +88,8 @@ interface ExportJob extends TenantJob {
   exportId: string;
   userId: string;
   dataScope: DataScope;
+  /** Lead list exports: the requester's role (contact masking). */
+  roleKey?: string;
 }
 
 const COMPANY_DATA = 'company_data';
@@ -138,6 +128,7 @@ export class ReportsService implements OnModuleInit {
     projects: ProjectsService,
     units: UnitsService,
     private readonly leads: LeadsService,
+    private readonly leadExports: LeadExportsService,
   ) {
     this.reports = new Map(
       reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations, phase3: { deals, documents, commissions, counterparties, attendance, projects, units } }).map((r) => [r.key, r]),
@@ -223,6 +214,10 @@ export class ReportsService implements OnModuleInit {
     try {
       if (row.reportKey === COMPANY_DATA) {
         await this.buildCompanyExport(row, job);
+        return;
+      }
+      if (row.reportKey === LEAD_LIST_EXPORT) {
+        await this.leadExports.build(row, { ...job, roleKey: job.roleKey ?? '' });
         return;
       }
       const report = this.find(row.reportKey);

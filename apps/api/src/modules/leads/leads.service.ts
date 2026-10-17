@@ -10,9 +10,11 @@ import { EventBus } from '../../core/events/domain-events';
 import { decodeCursor, encodeCursor } from '../../core/http/pagination';
 import { RequestContext } from '../../core/http/request-context';
 import { OrganizationDirectory } from '../organization/directory.service';
+import { OrganizationService } from '../organization/organization.service';
 import { LeadConfigService } from '../settings/lead-config.service';
 import { SettingsService } from '../settings/settings.service';
 import {
+  StatusCountDto,
   CheckExistingResult,
   LeadCreateDto,
   LeadDto,
@@ -25,7 +27,7 @@ import { canEdit, canManage, LeadAccess, LeadScope } from './lead-scope';
 import { LeadErrors } from './leads.errors';
 import { ActivityInput, LeadPatch, LeadsRepository } from './leads.repository';
 import { activities, AssignmentMethod, LeadRow, leadProjects, leads, leadShares, savedFilters } from './leads.schema';
-import { dayStart, dayAfter } from '../../core/http/dates';
+import { dayAfter, dayStart, zonedDayAfter, zonedDayStart } from '../../core/http/dates';
 
 export interface OwnerChange {
   method: AssignmentMethod;
@@ -76,6 +78,7 @@ export class LeadsService {
     private readonly config: LeadConfigService,
     private readonly settings: SettingsService,
     private readonly directory: OrganizationDirectory,
+    private readonly organization: OrganizationService,
     private readonly audit: AuditService,
     private readonly events: EventBus,
     private readonly db: DbService,
@@ -113,6 +116,10 @@ export class LeadsService {
     return maskContact(LeadDto.from(lead, (await this.repo.projectsOf([lead.id])).get(lead.id), access), hide);
   }
 
+  private async companyTimeZone(): Promise<string> {
+    return (await this.organization.getProfile(this.db.currentTenantId!)).timezone ?? 'Asia/Dubai';
+  }
+
   // =================================================================== Global Configuration › Leads switches
   /** The lead feature switches of this company (export, source update, past dates, hidden contact info …). */
   async features() {
@@ -141,17 +148,65 @@ export class LeadsService {
     const offset = query.cursor ? Number(decodeCursor(query.cursor, 1)[0]) : 0;
     const rows = await this.repo.list(where, this.orderBy(filters.sort ?? DEFAULT_SORT), query.limit + 1, offset);
     const kept = rows.slice(0, query.limit);
-    const [access, projects] = await Promise.all([this.scope.accessFor(p, kept), this.repo.projectsOf(kept.map((r) => r.id))]);
+    const [access, projects, assigned] = await Promise.all([
+      this.scope.accessFor(p, kept),
+      this.repo.projectsOf(kept.map((r) => r.id)),
+      this.repo.latestAssignments(kept.map((r) => r.id)),
+    ]);
     const hasMore = rows.length > query.limit;
     const hide = await this.hidesContact();
+    const from = (id: string) => {
+      const a = assigned.get(id);
+      return a ? { userId: a.changedBy, method: a.method, at: a.changedAt.toISOString() } : null;
+    };
     return {
-      data: kept.map((l) => maskContact(LeadDto.from(l, projects.get(l.id), access.get(l.id)), hide)),
+      data: kept.map((l) => ({ ...maskContact(LeadDto.from(l, projects.get(l.id), access.get(l.id)), hide), assignedFrom: from(l.id) })),
       page: {
         nextCursor: hasMore ? encodeCursor([offset + query.limit]) : null,
         hasMore,
         ...(query.total ? { total: await this.repo.count(where) } : {}),
       },
     };
+  }
+
+  /**
+   * Show Lead Counts: leads per status (Hot, Warm, Cold, Sale Done, zeros included) with the list's search, dates
+   * and filters, in the user's access. A status tab on screen does not narrow the counts.
+   */
+  async statusCounts(p: Principal, query: LeadListQuery): Promise<StatusCountDto[]> {
+    const filters = await this.withSavedFilter(p, query);
+    const tab = filters.tab && ['hot', 'warm', 'cold', 'sale_done'].includes(filters.tab) ? 'all' : filters.tab;
+    const where = and(await this.scope.visible(p), ...(await this.conditions(p, { ...filters, tab })));
+    const counts = await this.repo.countByStage(where);
+    const stages = (await this.config.listStages(100)).data;
+    return stages.map((s) => ({ stageId: s.id, key: s.key, count: counts.get(s.id) ?? 0 }));
+  }
+
+  /**
+   * One page of leads for an export (worker): the requester's scope and filters, or the chosen lead IDs, with
+   * the latest assignment. Contact details are masked when the requester's role hides them.
+   */
+  async exportRows(p: Principal, query: LeadListQuery & { leadIds?: string[] }, limit: number, offset: number) {
+    const where = and(
+      await this.scope.visible(p),
+      ...(await this.conditions(p, query)),
+      query.leadIds ? inArray(leads.id, query.leadIds.length ? query.leadIds : ['00000000-0000-0000-0000-000000000000']) : undefined,
+    );
+    const rows = await this.repo.list(where, this.orderBy(query.sort ?? DEFAULT_SORT), limit, offset);
+    const [projects, assigned] = await Promise.all([this.repo.projectsOf(rows.map((r) => r.id)), this.repo.latestAssignments(rows.map((r) => r.id))]);
+    const { hide_contact_info: hide } = await this.features();
+    const masked = hide.enabled && hide.role_keys.includes(p.roleKey);
+    return rows.map((l) => ({ dto: maskContact(LeadDto.from(l, projects.get(l.id)), masked), assignedFrom: assigned.get(l.id) ?? null, closedAt: l.closedAt }));
+  }
+
+  /** How many leads an export would contain (shown before confirming). */
+  async exportCount(p: Principal, query: LeadListQuery & { leadIds?: string[] }): Promise<number> {
+    const where = and(
+      await this.scope.visible(p),
+      ...(await this.conditions(p, query)),
+      query.leadIds ? inArray(leads.id, query.leadIds.length ? query.leadIds : ['00000000-0000-0000-0000-000000000000']) : undefined,
+    );
+    return this.repo.count(where);
   }
 
   /** "This lead already exists, owned by …" while typing a new lead (SRS §2.9). Not limited to the user's scope. */
@@ -587,6 +642,14 @@ export class LeadsService {
     if (f.budgetMax) c.push(sql`coalesce(${leads.budgetMin}, ${leads.budgetMax}) <= ${f.budgetMax}`);
     if (f.createdFrom) c.push(gte(leads.createdAt, dayStart(f.createdFrom)));
     if (f.createdTo) c.push(lt(leads.createdAt, dayAfter(f.createdTo)));
+    // Calendar / Date Range: the chosen date field, whole days in the company time zone, end date included.
+    if (f.dateFrom || f.dateTo) {
+      const tz = await this.companyTimeZone();
+      const column = f.dateField === 'follow_up' ? leads.nextFollowUpAt : f.dateField === 'sale_done' ? leads.closedAt : leads.createdAt;
+      if (f.dateField === 'sale_done') c.push(eq(leads.stageId, (await this.stageByKey('sale_done')).id));
+      if (f.dateFrom) c.push(gte(column, zonedDayStart(f.dateFrom, tz)));
+      if (f.dateTo) c.push(lt(column, zonedDayAfter(f.dateTo, tz)));
+    }
     return c;
   }
 
@@ -618,6 +681,9 @@ const SAVED_FILTER_KEYS = {
   budgetMax: 1,
   createdFrom: 1,
   createdTo: 1,
+  dateField: 1,
+  dateFrom: 1,
+  dateTo: 1,
 };
 
 const METHOD_LABEL: Record<AssignmentMethod, string> = {

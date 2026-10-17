@@ -1,3 +1,5 @@
+import { SettingsModule } from '../settings/settings.module';
+import { LeadExportsController, LeadExportsService } from './lead-exports';
 import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiAcceptedResponse, ApiBearerAuth, ApiOkResponse, ApiOperation, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -82,9 +84,9 @@ export class ReportsController {
 
 /** Reports, exports and the export log (SRS §8). */
 @Module({
-  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule, DealsModule, FinanceModule, AttendanceModule, ProjectsModule],
-  controllers: [ReportsController],
-  providers: [ReportsService],
+  imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule, DealsModule, FinanceModule, AttendanceModule, ProjectsModule, SettingsModule],
+  controllers: [ReportsController, LeadExportsController],
+  providers: [ReportsService, LeadExportsService],
   exports: [ReportsService],
 })
 export class ReportsModule {}

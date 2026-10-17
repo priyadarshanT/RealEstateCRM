@@ -1,23 +1,38 @@
 // Lead list columns (SRS §2.10).
 
+// Manage Columns (Lead page §7): keys match the Excel export columns (POST /lead-exports).
 export const LEAD_COLUMNS = [
-  { key: 'name', label: 'Name / Phone' },
+  { key: 'name', label: 'Name / Phone', locked: true },
+  { key: 'phone', label: 'Phone' },
   { key: 'email', label: 'Email' },
-  { key: 'country', label: 'Country' },
+  { key: 'stage', label: 'Status' },
+  { key: 'substatus', label: 'Substatus' },
   { key: 'project', label: 'Project' },
-  { key: 'source', label: 'Source · Campaign' },
-  { key: 'agent', label: 'Agent' },
+  { key: 'agent', label: 'Assigned To' },
+  { key: 'secondaryOwner', label: 'Secondary Owner' },
+  { key: 'assignedFrom', label: 'Assigned From' },
+  { key: 'latestNote', label: 'Note' },
+  { key: 'country', label: 'Country' },
+  { key: 'source', label: 'Source' },
+  { key: 'campaign', label: 'Campaign' },
   { key: 'priority', label: 'Priority' },
   { key: 'score', label: 'Score' },
-  { key: 'stage', label: 'Status' },
-  { key: 'latestNote', label: 'Latest note' },
-  { key: 'nextFollowUp', label: 'Next follow-up' },
+  { key: 'nextFollowUp', label: 'Next Follow-up' },
   { key: 'createdAt', label: 'Created' },
 ] as const;
 
 export type LeadColumnKey = (typeof LEAD_COLUMNS)[number]['key'];
 
-export const DEFAULT_COLUMNS: LeadColumnKey[] = ['name', 'source', 'score', 'stage', 'nextFollowUp', 'agent'];
+export const DEFAULT_COLUMNS: LeadColumnKey[] = ['name', 'stage', 'substatus', 'source', 'agent', 'nextFollowUp', 'score'];
+
+/** Dates the Calendar / Date Range can filter (Lead page §8.3). Appointment Date arrives with scheduling. */
+export const LEAD_DATE_FIELDS = [
+  { key: 'created', label: 'Lead Created Date' },
+  { key: 'follow_up', label: 'Follow-up Date' },
+  { key: 'sale_done', label: 'Sale Done Date' },
+];
+
+export const STATUS_TABS = ['hot', 'warm', 'cold', 'sale_done'];
 
 export const LEAD_TABS = [
   { key: 'all', label: 'All Leads' },

@@ -121,8 +121,11 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 
 **Lead list**
 
-10. Columns: name, phones, email, country, project, source, campaign, form, agent, priority, stage, latest note, next follow-up, lead score.
-11. Search and filter by name, phone, email, project, campaign, agent, team, stage, budget, source and date.
+10. Columns (**Manage Columns**, saved per user: show/hide, search, drag to reorder, Apply / Cancel / Reset to Default): name, phone, email, status, substatus, project, Assigned To (owner), Secondary Owner, Assigned From (who or what made the latest assignment), note, country, source, campaign, priority, score, next follow-up, created. City is not recorded on leads, so it is not offered.
+11. Search and filter by name, phone, email, project, campaign, agent, team, status, budget, source, and a **Calendar / Date Range** on Lead Created, Follow-up or Sale Done date (presets Today, Yesterday, Last 7 Days, This Month, Last Month, or custom; company time zone, end date included).
+11a. **Show Lead Counts** shows Hot / Warm / Cold / Sale Done totals (zeros included) with the same search, dates and filters, in the user's access; the choice is kept for the session.
+11b. **Export Leads**: Selected Leads or All Filtered Leads, with the count shown first, to Excel with the user's visible columns in order; follows the Export Leads switch, the leads.export permission, lead access and contact masking; made in the background.
+11c. **Export Tracker**: every lead export with export ID, file name, exported by, requested time, scope, filters, columns, record count, status (Queued, Processing, Ready, Failed, Expired) and Download Excel / Retry. Users see their own exports, managers their teams', Admins all. Downloads are checked again (permission, switch, access) and logged; files expire after the retention period (30 days by default).
 12. Best leads first: sorted by lead score, then next follow-up.
 
 **Lead page**

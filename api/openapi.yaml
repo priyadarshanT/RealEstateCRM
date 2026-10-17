@@ -81,6 +81,102 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooMany'
+  /me/list-columns/{list}:
+    get:
+      tags:
+      - Session
+      summary: My columns for a list (Manage Columns)
+      operationId: getMyListColumns
+      description: Empty columns = the default columns.
+      parameters:
+      - name: list
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - leads
+          - projects
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListColumns'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    put:
+      tags:
+      - Session
+      summary: Save my columns for a list
+      operationId: saveMyListColumns
+      parameters:
+      - name: list
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - leads
+          - projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - columns
+              properties:
+                columns:
+                  type: array
+                  minItems: 1
+                  maxItems: 60
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListColumns'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    delete:
+      tags:
+      - Session
+      summary: Reset my columns to the default
+      operationId: resetMyListColumns
+      parameters:
+      - name: list
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - leads
+          - projects
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /organization:
     get:
       tags:
@@ -917,7 +1013,7 @@ paths:
       summary: List settings
       operationId: listSettings
       description: 'Global Configuration. Keys: general.preferences, security.policy, leads.features
-        (with the Rotation switch), leads.scoring, finance.numbering. Settings never saved are listed with their default
+        (with the Rotation switch), leads.scoring, finance.numbering, exports.retention. Settings never saved are listed with their default
         and an empty updatedAt.
 
 
@@ -1832,6 +1928,27 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: dateField
+        in: query
+        description: Which date dateFrom / dateTo filter (default created)
+        schema:
+          type: string
+          enum:
+          - created
+          - follow_up
+          - sale_done
+      - name: dateFrom
+        in: query
+        description: Company time zone
+        schema:
+          type: string
+          format: date
+      - name: dateTo
+        in: query
+        description: Company time zone; the end date is included
+        schema:
+          type: string
+          format: date
       - name: ownerUserId
         in: query
         schema:
@@ -1962,6 +2079,177 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /leads/status-counts:
+    get:
+      tags:
+      - Leads
+      summary: Lead counts per status (Show Lead Counts)
+      operationId: countLeadsByStatus
+      description: 'Hot, Warm, Cold and Sale Done with the same search, dates and filters as the list, in the user''s
+        access (zeros included). A status tab does not narrow the counts.
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: tab
+        in: query
+        schema:
+          type: string
+          enum:
+          - all
+          - my
+          - shared
+          - team
+          - unassigned
+          - deleted
+          - hot
+          - warm
+          - cold
+          - sale_done
+          - scheduled
+          - overdue
+      - name: q
+        in: query
+        schema:
+          type: string
+        description: Name, phone or email
+      - name: stageId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: substatusId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: dateField
+        in: query
+        description: Which date dateFrom / dateTo filter (default created)
+        schema:
+          type: string
+          enum:
+          - created
+          - follow_up
+          - sale_done
+      - name: dateFrom
+        in: query
+        description: Company time zone
+        schema:
+          type: string
+          format: date
+      - name: dateTo
+        in: query
+        description: Company time zone; the end date is included
+        schema:
+          type: string
+          format: date
+      - name: ownerUserId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: teamId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: sourceId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: campaignId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: eventId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: budgetMin
+        in: query
+        schema:
+          type: string
+          pattern: ^-?\d+(\.\d{1,2})?$
+          description: Decimal as string, 2 places
+          example: '3250000.00'
+      - name: budgetMax
+        in: query
+        schema:
+          type: string
+          pattern: ^-?\d+(\.\d{1,2})?$
+          description: Decimal as string, 2 places
+          example: '3250000.00'
+      - name: createdFrom
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: createdTo
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: savedFilterId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Default: -score,nextFollowUpAt'
+      - name: total
+        in: query
+        schema:
+          type: boolean
+        description: Include total count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - stageId
+                      - key
+                      - count
+                      properties:
+                        stageId:
+                          type: string
+                          format: uuid
+                        key:
+                          type: string
+                        count:
+                          type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooMany'
   /leads/check-existing:
@@ -2799,6 +3087,175 @@ paths:
                 $ref: '#/components/schemas/LeadImport'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /lead-exports:
+    post:
+      tags:
+      - Leads
+      summary: Export selected or all filtered leads to Excel
+      operationId: exportLeads
+      description: 'Needs Export Leads on (Global Configuration › Leads). Runs in the background; every request is in
+        the Export Tracker. Contact masking applies to the file.
+
+
+        **Permission:** `leads.export`'
+      x-permission: leads.export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - scope
+              - columns
+              properties:
+                scope:
+                  type: string
+                  enum:
+                  - selected
+                  - filtered
+                leadIds:
+                  type: array
+                  maxItems: 5000
+                  items:
+                    type: string
+                    format: uuid
+                filters:
+                  type: object
+                  additionalProperties: true
+                  description: The list filters (tab, q, status, owner, dateField, dateFrom, dateTo …)
+                columns:
+                  type: array
+                  minItems: 1
+                  maxItems: 40
+                  items:
+                    type: string
+      responses:
+        '202':
+          description: Export queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadExport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    get:
+      tags:
+      - Leads
+      summary: Export Tracker
+      operationId: listLeadExports
+      description: 'Own exports; managers see their teams'' exports; Admins see all. Ready files expire after the
+        retention period (setting exports.retention).
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - page
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadExport'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /lead-exports/{id}/download:
+    post:
+      tags:
+      - Leads
+      summary: Download a ready export again
+      operationId: downloadLeadExport
+      description: 'Access, the Export Leads switch and expiry are checked again; every download is logged.
+
+
+        **Permission:** `leads.export`'
+      x-permission: leads.export
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - url
+                - expiresAt
+                properties:
+                  url:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          description: The file is older than the retention period
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /lead-exports/{id}/retry:
+    post:
+      tags:
+      - Leads
+      summary: Retry a failed export
+      operationId: retryLeadExport
+      description: '**Permission:** `leads.export`'
+      x-permission: leads.export
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '202':
+          description: Export queued again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadExport'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -11113,6 +11570,85 @@ components:
       - dualOwnership
       - defaultCountry
       - defaultCurrency
+    ListColumns:
+      type: object
+      properties:
+        columns:
+          oneOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+      required:
+      - columns
+    LeadExport:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        exportId:
+          type: string
+          description: Short export ID shown to users
+        fileName:
+          oneOf:
+          - type: string
+          - type: 'null'
+        exportedBy:
+          type: string
+          format: uuid
+        exportedByName:
+          oneOf:
+          - type: string
+          - type: 'null'
+        requestedAt:
+          type: string
+          format: date-time
+        scope:
+          type: string
+          enum:
+          - selected
+          - filtered
+        filters:
+          type: object
+          additionalProperties: true
+        columns:
+          type: array
+          items:
+            type: string
+        recordCount:
+          oneOf:
+          - type: integer
+          - type: 'null'
+        status:
+          type: string
+          enum:
+          - queued
+          - processing
+          - ready
+          - failed
+          - expired
+        errorDetail:
+          oneOf:
+          - type: string
+          - type: 'null'
+        downloadCount:
+          type: integer
+        expiresAt:
+          oneOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+      required:
+      - id
+      - exportId
+      - exportedBy
+      - requestedAt
+      - scope
+      - filters
+      - columns
+      - status
+      - downloadCount
     SettingChange:
       type: object
       properties:
@@ -11517,6 +12053,26 @@ components:
             format: uuid
           - type: 'null'
           description: Dual Lead Ownership
+        assignedFrom:
+          readOnly: true
+          description: 'Lists: who made the latest assignment (userId empty = the system, e.g. rotation)'
+          oneOf:
+          - type: 'null'
+          - type: object
+            required:
+            - method
+            - at
+            properties:
+              userId:
+                oneOf:
+                - type: string
+                  format: uuid
+                - type: 'null'
+              method:
+                type: string
+              at:
+                type: string
+                format: date-time
         closeReasonId:
           oneOf:
           - type: string

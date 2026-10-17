@@ -34,6 +34,13 @@ const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : val
 /** Money as a string with 2 decimals (API guide §2). */
 export const money = (v: string | null): string | undefined => (v === null ? undefined : Number(v).toFixed(2));
 
+/** Assigned From: the user who made the latest assignment, or the system (rotation, re-enquiry …). */
+export class AssignedFromDto {
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) userId!: string | null;
+  @ApiProperty() method!: string;
+  @ApiProperty({ format: 'date-time' }) at!: string;
+}
+
 // ---------------------------------------------------------------- Lead (components.schemas.Lead)
 export class LeadDto {
   @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
@@ -55,6 +62,8 @@ export class LeadDto {
   @ApiPropertyOptional(nullableUuid) ownerUserId!: string | null;
   @ApiPropertyOptional(nullableUuid) teamId!: string | null;
   @ApiPropertyOptional({ ...nullableUuid, description: 'Dual Lead Ownership' }) secondaryOwnerUserId!: string | null;
+  @ApiPropertyOptional({ type: () => AssignedFromDto, nullable: true, readOnly: true, description: 'Who or what made the latest assignment (list views)' })
+  assignedFrom?: AssignedFromDto | null;
   @ApiProperty({ format: 'uuid' }) stageId!: string;
   @ApiProperty({ enum: CATEGORIES }) stageCategory!: LeadRow['stageCategory'];
   @ApiPropertyOptional(nullableUuid) substatusId!: string | null;
@@ -113,10 +122,24 @@ export class LeadDto {
   }
 }
 
+export class StatusCountDto {
+  @ApiProperty({ format: 'uuid' }) stageId!: string;
+  @ApiProperty() key!: string;
+  @ApiProperty() count!: number;
+}
+
+export class StatusCountList {
+  @ApiProperty({ type: [StatusCountDto] }) data!: StatusCountDto[];
+}
+
 export class LeadPage {
   @ApiProperty({ type: [LeadDto] }) data!: LeadDto[];
   @ApiProperty({ type: PageInfo }) page!: PageInfo & { total?: number };
 }
+
+/** Dates the Lead page range can filter (Lead Created, Follow-up, Sale Done). */
+export const LEAD_DATE_FIELDS = ['created', 'follow_up', 'sale_done'] as const;
+export type LeadDateField = (typeof LEAD_DATE_FIELDS)[number];
 
 export const LEAD_TABS = ['all', 'my', 'shared', 'team', 'unassigned', 'deleted', 'hot', 'warm', 'cold', 'sale_done', 'scheduled', 'overdue'] as const;
 export type LeadTab = (typeof LEAD_TABS)[number];
@@ -136,6 +159,12 @@ export class LeadListQuery extends PageQuery {
   @ApiPropertyOptional() @IsOptional() @Matches(MONEY) budgetMax?: string;
   @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() createdFrom?: string;
   @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() createdTo?: string;
+  @ApiPropertyOptional({ enum: LEAD_DATE_FIELDS, description: 'Which date dateFrom / dateTo filter (default created)' })
+  @IsOptional()
+  @IsIn(LEAD_DATE_FIELDS)
+  dateField?: LeadDateField;
+  @ApiPropertyOptional({ format: 'date', description: 'Company time zone; the end date is included' }) @IsOptional() @IsDateOnly() dateFrom?: string;
+  @ApiPropertyOptional({ format: 'date' }) @IsOptional() @IsDateOnly() dateTo?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() savedFilterId?: string;
   @ApiPropertyOptional({ description: 'Default: -score,nextFollowUpAt' }) @IsOptional() @IsString() @MaxLength(200) sort?: string;
   @ApiPropertyOptional() @IsOptional() @Transform(toBool) @IsBoolean() total?: boolean;

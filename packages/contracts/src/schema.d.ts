@@ -26,6 +26,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/list-columns/{list}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My columns for a list (Manage Columns)
+         * @description Empty columns = the default columns.
+         */
+        get: operations["getMyListColumns"];
+        /** Save my columns for a list */
+        put: operations["saveMyListColumns"];
+        post?: never;
+        /** Reset my columns to the default */
+        delete: operations["resetMyListColumns"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organization": {
         parameters: {
             query?: never;
@@ -375,7 +397,7 @@ export interface paths {
         };
         /**
          * List settings
-         * @description Global Configuration. Keys: general.preferences, security.policy, leads.features (with the Rotation switch), leads.scoring, finance.numbering. Settings never saved are listed with their default and an empty updatedAt.
+         * @description Global Configuration. Keys: general.preferences, security.policy, leads.features (with the Rotation switch), leads.scoring, finance.numbering, exports.retention. Settings never saved are listed with their default and an empty updatedAt.
          *
          *     **Permission:** `settings.manage`
          */
@@ -724,6 +746,28 @@ export interface paths {
          *     **Permission:** `leads.create`
          */
         post: operations["createLead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leads/status-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lead counts per status (Show Lead Counts)
+         * @description Hot, Warm, Cold and Sale Done with the same search, dates and filters as the list, in the user's access (zeros included). A status tab does not narrow the counts.
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["countLeadsByStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1152,6 +1196,76 @@ export interface paths {
          *     **Permission:** `leads.import`
          */
         post: operations["retryLeadImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Tracker
+         * @description Own exports; managers see their teams' exports; Admins see all. Ready files expire after the retention period (setting exports.retention).
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["listLeadExports"];
+        put?: never;
+        /**
+         * Export selected or all filtered leads to Excel
+         * @description Needs Export Leads on (Global Configuration › Leads). Runs in the background; every request is in the Export Tracker. Contact masking applies to the file.
+         *
+         *     **Permission:** `leads.export`
+         */
+        post: operations["exportLeads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-exports/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download a ready export again
+         * @description Access, the Export Leads switch and expiry are checked again; every download is logged.
+         *
+         *     **Permission:** `leads.export`
+         */
+        post: operations["downloadLeadExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lead-exports/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed export
+         * @description **Permission:** `leads.export`
+         */
+        post: operations["retryLeadExport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4961,6 +5075,33 @@ export interface components {
             defaultCountry: string;
             defaultCurrency: string;
         };
+        ListColumns: {
+            columns: string[] | null;
+        };
+        LeadExport: {
+            /** Format: uuid */
+            id: string;
+            /** @description Short export ID shown to users */
+            exportId: string;
+            fileName?: string | null;
+            /** Format: uuid */
+            exportedBy: string;
+            exportedByName?: string | null;
+            /** Format: date-time */
+            requestedAt: string;
+            /** @enum {string} */
+            scope: "selected" | "filtered";
+            filters: {
+                [key: string]: unknown;
+            };
+            columns: string[];
+            recordCount?: number | null;
+            /** @enum {string} */
+            status: "queued" | "processing" | "ready" | "failed" | "expired";
+            errorDetail?: string | null;
+            downloadCount: number;
+            expiresAt?: string | null;
+        };
         SettingChange: {
             /** Format: date-time */
             at: string;
@@ -5150,6 +5291,13 @@ export interface components {
             substatusId?: string | null;
             /** @description Dual Lead Ownership */
             secondaryOwnerUserId?: string | null;
+            /** @description Lists: who made the latest assignment (userId empty = the system, e.g. rotation) */
+            readonly assignedFrom?: null | {
+                userId?: string | null;
+                method: string;
+                /** Format: date-time */
+                at: string;
+            };
             closeReasonId?: string | null;
             /** @description Phone and email are masked for this user (Hide Lead Contact Info) */
             readonly contactHidden?: boolean;
@@ -6744,6 +6892,86 @@ export interface operations {
             429: components["responses"]["TooMany"];
         };
     };
+    getMyListColumns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list: "leads" | "projects";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListColumns"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    saveMyListColumns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list: "leads" | "projects";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    columns: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListColumns"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    resetMyListColumns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list: "leads" | "projects";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
     getOrganizationProfile: {
         parameters: {
             query?: never;
@@ -8271,6 +8499,12 @@ export interface operations {
                 q?: string;
                 stageId?: string;
                 substatusId?: string;
+                /** @description Which date dateFrom / dateTo filter (default created) */
+                dateField?: "created" | "follow_up" | "sale_done";
+                /** @description Company time zone */
+                dateFrom?: string;
+                /** @description Company time zone; the end date is included */
+                dateTo?: string;
                 ownerUserId?: string;
                 teamId?: string;
                 projectId?: string;
@@ -8341,6 +8575,67 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    countLeadsByStatus: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from page.nextCursor */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                tab?: "all" | "my" | "shared" | "team" | "unassigned" | "deleted" | "hot" | "warm" | "cold" | "sale_done" | "scheduled" | "overdue";
+                /** @description Name, phone or email */
+                q?: string;
+                stageId?: string;
+                substatusId?: string;
+                /** @description Which date dateFrom / dateTo filter (default created) */
+                dateField?: "created" | "follow_up" | "sale_done";
+                /** @description Company time zone */
+                dateFrom?: string;
+                /** @description Company time zone; the end date is included */
+                dateTo?: string;
+                ownerUserId?: string;
+                teamId?: string;
+                projectId?: string;
+                sourceId?: string;
+                campaignId?: string;
+                eventId?: string;
+                budgetMin?: string;
+                budgetMax?: string;
+                createdFrom?: string;
+                createdTo?: string;
+                savedFilterId?: string;
+                /** @description Default: -score,nextFollowUpAt */
+                sort?: string;
+                /** @description Include total count */
+                total?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** Format: uuid */
+                            stageId: string;
+                            key: string;
+                            count: number;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["TooMany"];
         };
     };
@@ -9058,6 +9353,141 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listLeadExports: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from page.nextCursor */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadExport"][];
+                        page: components["schemas"]["PageInfo"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    exportLeads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    scope: "selected" | "filtered";
+                    leadIds?: string[];
+                    /** @description The list filters (tab, q, status, owner, dateField, dateFrom, dateTo …) */
+                    filters?: {
+                        [key: string]: unknown;
+                    };
+                    columns: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Export queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadExport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    downloadLeadExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description The file is older than the retention period */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooMany"];
+        };
+    };
+    retryLeadExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export queued again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadExport"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

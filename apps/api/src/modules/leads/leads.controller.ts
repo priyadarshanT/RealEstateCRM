@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
-import { SecondaryOwnerDto,
+import { StatusCountList, SecondaryOwnerDto,
   ActivityDto,
   ActivityPage,
   AssignDto,
@@ -55,6 +55,14 @@ export class LeadsController {
   @ApiCreatedResponse({ type: LeadDto })
   create(@CurrentPrincipal() p: Principal, @Body() body: LeadCreateDto): Promise<LeadDto> {
     return this.leads.create(p, body);
+  }
+
+  @Get('status-counts')
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'countLeadsByStatus', summary: 'Lead counts per status (Show Lead Counts)' })
+  @ApiOkResponse({ type: StatusCountList })
+  async statusCounts(@CurrentPrincipal() p: Principal, @Query() query: LeadListQuery): Promise<StatusCountList> {
+    return { data: await this.leads.statusCounts(p, query) };
   }
 
   @Get('check-existing')

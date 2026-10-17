@@ -4,10 +4,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Dropdown,
-  DropdownCheckboxItem,
-  DropdownContent,
-  DropdownTrigger,
   EmptyState,
   Loading,
   TabStrip,
@@ -17,18 +13,21 @@ import {
   Tr,
   cn,
 } from '@crm/ui';
-import { Columns3, Plus, Upload } from 'lucide-react';
+import { Eye, EyeOff, Plus, Upload } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { errorMessage } from '@/core/api';
-import { presetRange } from '@/core/date-range';
+import { api, errorMessage, unwrap } from '@/core/api';
 import { formatDate, formatRelativeDay, initials } from '@/core/format';
 import { byId, useCampaigns, useColleagues, useProjectList, useSources, useStages, useSubstatuses } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
-import { ExportButton } from '@/features/reports/export-button';
+import { useClientPolicy } from '@/features/global-config/policy';
+import { DateRangeControl, type DateRangeValue } from '@/features/list-tools/date-range-control';
+import { ManageColumnsButton, useListColumns } from '@/features/list-tools/manage-columns';
+import { ExportLeadsButton, ExportTrackerButton } from './lead-exports';
 import { BulkBar } from './bulk-bar';
-import { DEFAULT_COLUMNS, LEAD_COLUMNS, LEAD_TABS, type LeadColumnKey } from './columns';
+import { DEFAULT_COLUMNS, LEAD_COLUMNS, LEAD_DATE_FIELDS, LEAD_TABS, STATUS_TABS, type LeadColumnKey } from './columns';
 import { EMPTY_FILTERS, LeadFilters, type LeadFilterState } from './lead-filters';
 import { useLeadList, type Lead, type LeadQuery, type LeadTab } from './leads-api';
 import { ImportDialog } from './import-dialog';
@@ -36,24 +35,17 @@ import { NewLeadDialog } from './new-lead-dialog';
 import { SavedFiltersMenu } from './saved-filters-menu';
 import { PriorityBadge, ScoreBadge, StageBadge } from './stage-badge';
 
-const COLUMNS_KEY = 'crm.leads.columns';
-
-function loadColumns(): LeadColumnKey[] {
-  try {
-    const raw = window.localStorage.getItem(COLUMNS_KEY);
-    return raw ? (JSON.parse(raw) as LeadColumnKey[]) : DEFAULT_COLUMNS;
-  } catch {
-    return DEFAULT_COLUMNS;
-  }
-}
+const COUNTS_KEY = 'crm.leads.showCounts';
 
 /** Builds GET /leads query parameters from the tab and filters on screen. */
-function toQuery(tab: LeadTab, f: LeadFilterState, q: string): LeadQuery {
-  const { from, to } = presetRange(f.datePreset);
+function toQuery(tab: LeadTab, f: LeadFilterState, q: string, range: DateRangeValue): LeadQuery {
   const query: LeadQuery = { tab, sort: '-score,nextFollowUpAt' };
   if (q) query.q = q;
-  if (from) query.createdFrom = from;
-  if (to) query.createdTo = to;
+  if (range.from || range.to) {
+    query.dateField = range.field as LeadQuery['dateField'];
+    if (range.from) query.dateFrom = range.from;
+    if (range.to) query.dateTo = range.to;
+  }
   for (const k of ['sourceId', 'projectId', 'campaignId', 'ownerUserId', 'teamId', 'stageId', 'budgetMin', 'budgetMax'] as const) {
     if (f[k]) (query as Record<string, unknown>)[k] = f[k];
   }
@@ -65,6 +57,7 @@ export function LeadsListScreen() {
   const params = useSearchParams();
   const can = useCan();
   const me = useMe();
+  const policy = useClientPolicy();
   const tz = me.data?.user.timezone;
 
   // Dashboard drill-down links arrive as query parameters (e.g. ?stageId=… or ?tab=overdue).
@@ -75,23 +68,35 @@ export function LeadsListScreen() {
   }));
   const [search, setSearch] = useState('');
   const [savedName, setSavedName] = useState<string | null>(null);
-  const [columns, setColumns] = useState<LeadColumnKey[]>(DEFAULT_COLUMNS);
+  const [range, setRange] = useState<DateRangeValue>({ field: 'created' });
+  const listColumns = useListColumns('leads', [...LEAD_COLUMNS], DEFAULT_COLUMNS);
+  const columns = listColumns.columns as LeadColumnKey[];
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [cursor, setCursor] = useState<string | undefined>();
   const [rows, setRows] = useState<Lead[]>([]);
   const [newOpen, setNewOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-
-  useEffect(() => setColumns(loadColumns()), []);
+  const [trackerSignal, setTrackerSignal] = useState(0);
+  // Show Lead Counts: remembered for the browser session.
+  const [showCounts, setShowCounts] = useState(false);
   useEffect(() => {
     try {
-      window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(columns));
+      setShowCounts(window.sessionStorage.getItem(COUNTS_KEY) === '1');
     } catch {
-      /* storage unavailable: columns reset next visit */
+      /* storage unavailable */
     }
-  }, [columns]);
+  }, []);
+  const toggleCounts = () =>
+    setShowCounts((v) => {
+      try {
+        window.sessionStorage.setItem(COUNTS_KEY, v ? '0' : '1');
+      } catch {
+        /* storage unavailable */
+      }
+      return !v;
+    });
 
-  const baseQuery = useMemo(() => toQuery(tab, filters, search), [tab, filters, search]);
+  const baseQuery = useMemo(() => toQuery(tab, filters, search, range), [tab, filters, search, range]);
   const list = useLeadList({ ...baseQuery, ...(cursor ? { cursor } : {}) });
 
   // Reset paging and selection whenever the query changes.
@@ -111,6 +116,16 @@ export function LeadsListScreen() {
   const campaigns = byId(useCampaigns().data);
   const projects = byId(useProjectList().data);
   const users = byId(useColleagues().data);
+
+  const counts = useQuery({
+    queryKey: ['lead-status-counts', baseQuery],
+    enabled: showCounts,
+    queryFn: async () => {
+      const { tab: _tab, sort: _sort, ...rest } = baseQuery;
+      return unwrap(await api.GET('/leads/status-counts', { params: { query: rest } })).data;
+    },
+  });
+  const countOf = new Map((counts.data ?? []).map((c) => [c.key, c.count]));
 
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const someChecked = rows.some((r) => selected.has(r.id));
@@ -132,6 +147,19 @@ export function LeadsListScreen() {
             <span className="block text-xs text-muted-foreground">{lead.phonePrimary ?? ''}</span>
           </Link>
         );
+      case 'phone':
+        return <span className="font-mono text-xs">{lead.phonePrimary ?? '—'}</span>;
+      case 'substatus':
+        return lead.substatusId ? <span className="text-xs">{substatuses.get(lead.substatusId)?.name ?? '—'}</span> : <span className="text-muted-foreground">—</span>;
+      case 'secondaryOwner':
+        return lead.secondaryOwnerUserId ? <span className="text-xs">{users.get(lead.secondaryOwnerUserId)?.fullName ?? '—'}</span> : '—';
+      case 'assignedFrom': {
+        const a = lead.assignedFrom;
+        if (!a) return '—';
+        return <span className="text-xs">{a.userId ? (users.get(a.userId)?.fullName ?? '—') : `System · ${a.method.replace(/_/g, ' ')}`}</span>;
+      }
+      case 'campaign':
+        return lead.campaignId ? <span className="text-xs">{campaigns.get(lead.campaignId)?.name ?? '—'}</span> : '—';
       case 'email':
         return lead.email ?? '—';
       case 'project': {
@@ -141,12 +169,7 @@ export function LeadsListScreen() {
       case 'country':
         return lead.countryCode ?? '—';
       case 'source':
-        return (
-          <span className="text-xs text-muted-foreground">
-            {sources.get(lead.sourceId)?.name ?? '—'}
-            {lead.campaignId ? ` · ${campaigns.get(lead.campaignId)?.name ?? ''}` : ''}
-          </span>
-        );
+        return <span className="text-xs text-muted-foreground">{sources.get(lead.sourceId)?.name ?? '—'}</span>;
       case 'agent': {
         const owner = lead.ownerUserId ? users.get(lead.ownerUserId) : undefined;
         if (!lead.ownerUserId) return <span className="text-xs text-muted-foreground">Unassigned</span>;
@@ -161,7 +184,7 @@ export function LeadsListScreen() {
       case 'score':
         return <ScoreBadge score={lead.score} />;
       case 'stage':
-        return <StageBadge stage={stages.get(lead.stageId)} substatus={lead.substatusId ? substatuses.get(lead.substatusId)?.name : undefined} />;
+        return <StageBadge stage={stages.get(lead.stageId)} substatus={!columns.includes('substatus') && lead.substatusId ? substatuses.get(lead.substatusId)?.name : undefined} />;
       case 'latestNote':
         return <span className="line-clamp-2 max-w-56 text-xs">{lead.latestNote ?? '—'}</span>;
       case 'nextFollowUp': {
@@ -173,17 +196,19 @@ export function LeadsListScreen() {
     }
   };
 
-  const visible = LEAD_COLUMNS.filter((c) => columns.includes(c.key));
+  const visible = columns.map((k) => LEAD_COLUMNS.find((c) => c.key === k)!).filter(Boolean);
   const total = list.data?.page.total;
-  const exportFilters = Object.fromEntries(
-    Object.entries({ ...presetRange(filters.datePreset), ...filters, datePreset: undefined }).filter(([, v]) => v),
-  );
+  const exportFilters = Object.fromEntries(Object.entries(baseQuery).filter(([, v]) => v !== undefined && v !== ''));
 
   return (
     <div className="space-y-3">
       <h1 className="text-lg font-semibold">Leads</h1>
       <TabStrip
-        items={LEAD_TABS.map((t) => ({ key: t.key, label: t.label, ...(t.key === tab && total !== undefined ? { count: total } : {}) }))}
+        items={LEAD_TABS.map((t) => ({
+          key: t.key,
+          label: t.label,
+          ...(showCounts && STATUS_TABS.includes(t.key) && counts.data ? { count: countOf.get(t.key) ?? 0 } : t.key === tab && total !== undefined && !STATUS_TABS.includes(t.key) ? { count: total } : {}),
+        }))}
         value={tab}
         onChange={(k) => {
           setTab(k as LeadTab);
@@ -216,42 +241,51 @@ export function LeadsListScreen() {
             const { tab: savedTab, ...rest } = v.filters as { tab?: LeadTab } & Partial<LeadFilterState>;
             if (savedTab) setTab(savedTab);
             setFilters({ ...EMPTY_FILTERS, ...rest });
-            if (v.columns.length) setColumns(v.columns as LeadColumnKey[]);
+            if (v.columns.length) void listColumns.save.mutateAsync(v.columns);
             setSavedName(name);
           }}
         />
-        <div className="ml-auto flex items-start gap-2">
-          <Dropdown>
-            <DropdownTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Columns3 /> Columns
-              </Button>
-            </DropdownTrigger>
-            <DropdownContent align="end">
-              {LEAD_COLUMNS.map((c) => (
-                <DropdownCheckboxItem
-                  key={c.key}
-                  checked={columns.includes(c.key)}
-                  disabled={c.key === 'name'}
-                  onCheckedChange={(on) => setColumns((cols) => (on ? LEAD_COLUMNS.map((x) => x.key).filter((k) => k === c.key || cols.includes(k)) : cols.filter((k) => k !== c.key)))}
-                >
-                  {c.label}
-                </DropdownCheckboxItem>
-              ))}
-            </DropdownContent>
-          </Dropdown>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {can('leads.import') ? (
             <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
               <Upload /> Import
             </Button>
           ) : null}
-          {can('reports.export') ? <ExportButton reportKey="leads" filters={exportFilters} /> : null}
           {can('leads.create') ? (
             <Button size="sm" onClick={() => setNewOpen(true)}>
               <Plus /> New lead
             </Button>
           ) : null}
         </div>
+      </div>
+
+      {/* Lead page toolbar (stakeholder update §9): Show Lead Counts, Calendar / Date Range, Manage Columns, Export Leads, Export Tracker. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2">
+        <Button variant={showCounts ? 'primary' : 'outline'} size="sm" onClick={toggleCounts} aria-pressed={showCounts}>
+          {showCounts ? <EyeOff /> : <Eye />} {showCounts ? 'Hide Lead Counts' : 'Show Lead Counts'}
+        </Button>
+        <DateRangeControl fields={LEAD_DATE_FIELDS} value={range} onChange={setRange} />
+        <ManageColumnsButton
+          all={[...LEAD_COLUMNS]}
+          value={columns}
+          defaults={DEFAULT_COLUMNS}
+          onApply={(keys) => listColumns.save.mutateAsync(keys)}
+          onReset={() => listColumns.reset.mutateAsync()}
+          error={listColumns.save.error ?? listColumns.reset.error}
+        />
+        {can('leads.export') && policy.data?.exportLeads ? (
+          <ExportLeadsButton selectedIds={[...selected]} filteredCount={total} filters={exportFilters} columns={columns} onQueued={() => setTrackerSignal((n) => n + 1)} />
+        ) : null}
+        <ExportTrackerButton canExport={can('leads.export') && !!policy.data?.exportLeads} openSignal={trackerSignal} />
+        {showCounts && counts.isLoading ? <span className="text-xs text-muted-foreground">Counting…</span> : null}
+        {showCounts && counts.error ? (
+          <span className="text-xs text-danger">
+            Counts could not load.{' '}
+            <button type="button" className="underline" onClick={() => void counts.refetch()}>
+              Retry
+            </button>
+          </span>
+        ) : null}
       </div>
 
       {selected.size ? <BulkBar ids={[...selected]} deletedTab={tab === 'deleted'} onDone={() => setSelected(new Set())} /> : null}

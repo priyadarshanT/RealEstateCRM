@@ -51,6 +51,8 @@ export const SETTING_DEFINITIONS = {
         .refine((w) => !w.enabled || w.kind === 'logo' || w.text.trim().length > 0, { message: 'enter the watermark text', path: ['text'] }),
     })
     .strict(),
+  /** Export Tracker: days a generated export file can be downloaded again (then Expired). */
+  'exports.retention': z.object({ days: z.number().int().min(1).max(365) }).strict(),
   /** Global Configuration › Security (Admin only, every change audited). */
   'security.policy': z.object({ require_2fa: z.boolean(), allow_copy_paste: z.boolean(), disable_screenshots: z.boolean() }).strict(),
   /** Global Configuration › Leads: feature switches, enforced by the server. */
@@ -97,6 +99,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]?: SettingValue<K> } = {
     watermark: { enabled: false, kind: 'text', text: '', opacity: 20, position: 'bottom_right', apply_to: ['brochures', 'floor_plans', 'images'] },
   },
   'security.policy': { require_2fa: false, allow_copy_paste: true, disable_screenshots: false },
+  'exports.retention': { days: 30 },
   'leads.features': {
     export_leads: false,
     source_update: false,

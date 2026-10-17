@@ -20,3 +20,21 @@ export function dayStart(date: string): Date {
 export function dayAfter(date: string): Date {
   return new Date(dayStart(date).getTime() + 86_400_000);
 }
+
+/** Midnight of a calendar day in a time zone, as a UTC moment (date filters "in the company time zone"). */
+export function zonedDayStart(date: string, timeZone: string): Date {
+  const guess = dayStart(date).getTime();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
+      .formatToParts(new Date(guess))
+      .map((p) => [p.type, Number(p.value)]),
+  ) as Record<string, number>;
+  const shown = Date.UTC(parts.year!, parts.month! - 1, parts.day!, parts.hour!, parts.minute!);
+  return new Date(guess - (shown - guess));
+}
+
+/** Midnight of the next day in the time zone: the exclusive upper bound of an inclusive `to` date. */
+export function zonedDayAfter(date: string, timeZone: string): Date {
+  const next = new Date(dayStart(date).getTime() + 86_400_000).toISOString().slice(0, 10);
+  return zonedDayStart(next, timeZone);
+}

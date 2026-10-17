@@ -174,10 +174,11 @@ describe('Global Configuration', () => {
     const original = await sharp({ create: { width: 400, height: 300, channels: 3, background: '#3366aa' } }).png().toBuffer();
     const fileId = await upload(admin, 'view.png', 'image/png', original, 'project_media');
     await admin.post(`/api/v1/projects/${PROJECT_BEACHFRONT}/attachments`).send({ fileId, category: 'image' }).expect(201);
+    const general = (await admin.get('/api/v1/settings/general.preferences').expect(200)).body.value;
+    await admin.put('/api/v1/settings/general.preferences').send({ value: { ...general, watermark: { ...general.watermark, enabled: false } } }).expect(200);
     const plain = (await admin.get(`/api/v1/files/${fileId}/download`).expect(200)).body.url as string;
     expect(plain).not.toContain('/derived/');
 
-    const general = (await admin.get('/api/v1/settings/general.preferences').expect(200)).body.value;
     await admin
       .put('/api/v1/settings/general.preferences')
       .send({ value: { ...general, watermark: { enabled: true, kind: 'text', text: 'Al Noor Realty', opacity: 40, position: 'center', apply_to: ['images'] } } })

@@ -53,6 +53,12 @@ export class LeadsRepository {
     return this.db.current.select().from(leads).where(where).orderBy(...orderBy).limit(limit).offset(offset);
   }
 
+  /** Leads per status (stage) matching the condition. */
+  async countByStage(where: SQL | undefined): Promise<Map<string, number>> {
+    const rows = await this.db.current.select({ stageId: leads.stageId, n: sql<number>`count(*)::int` }).from(leads).where(where).groupBy(leads.stageId);
+    return new Map(rows.map((r) => [r.stageId, r.n]));
+  }
+
   async count(where: SQL | undefined): Promise<number> {
     const [row] = await this.db.current.select({ n: sql<number>`count(*)::int` }).from(leads).where(where);
     return row?.n ?? 0;
@@ -151,6 +157,17 @@ export class LeadsRepository {
 
   async insertStageHistory(values: { leadId: string; fromStageId: string | null; toStageId: string; toSubstatusId?: string | null; reasonId?: string | null; note?: string | null; isAutomatic?: boolean; changedBy?: string | null }): Promise<void> {
     await this.db.current.insert(leadStageHistory).values({ ...values, tenantId: this.tenantId });
+  }
+
+  /** The latest assignment of each lead (Assigned From). */
+  async latestAssignments(leadIds: string[]): Promise<Map<string, { changedBy: string | null; method: string; changedAt: Date }>> {
+    if (!leadIds.length) return new Map();
+    const rows = await this.db.current
+      .selectDistinctOn([leadAssignments.leadId], { leadId: leadAssignments.leadId, changedBy: leadAssignments.changedBy, method: leadAssignments.method, changedAt: leadAssignments.changedAt })
+      .from(leadAssignments)
+      .where(inArray(leadAssignments.leadId, leadIds))
+      .orderBy(leadAssignments.leadId, desc(leadAssignments.changedAt));
+    return new Map(rows.map((r) => [r.leadId, r]));
   }
 
   async insertAssignment(values: {

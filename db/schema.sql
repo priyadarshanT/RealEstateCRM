@@ -1522,6 +1522,17 @@ CREATE TABLE reconciliation_runs (
   FOREIGN KEY (tenant_id, run_by) REFERENCES users(tenant_id, id)
 );
 
+--- table user_list_columns | Users | The columns each user shows on a list (Manage Columns), in their order.
+CREATE TABLE user_list_columns (
+  tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
+  user_id         uuid NOT NULL,                                   -- User
+  list_key        text NOT NULL CHECK (list_key IN ('leads','projects')), -- Which list
+  columns         text[] NOT NULL CHECK (cardinality(columns) BETWEEN 1 AND 60), -- Column keys in display order
+  updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last saved
+  PRIMARY KEY (tenant_id, user_id, list_key),
+  FOREIGN KEY (tenant_id, user_id) REFERENCES users(tenant_id, id) ON DELETE CASCADE
+);
+
 --- table export_logs | Reports | Every export: who, which report, filters, format, rows, when.
 CREATE TABLE export_logs (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Export ID
@@ -1530,8 +1541,13 @@ CREATE TABLE export_logs (
   report_key      text NOT NULL,                                   -- Report, e.g. lead_master
   filters         jsonb NOT NULL DEFAULT '{}',                     -- Filters applied
   format          text NOT NULL CHECK (format IN ('xlsx','csv')),  -- File format
-  status          text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','completed','failed')), -- Status
+  status          text NOT NULL DEFAULT 'queued' CONSTRAINT export_logs_status_check CHECK (status IN ('queued','running','completed','failed','expired')), -- Status
   row_count       integer CHECK (row_count >= 0),                  -- Rows exported
+  scope           text CHECK (scope IN ('selected','filtered')),   -- List exports: selected rows or all filtered rows
+  columns         text[] NOT NULL DEFAULT '{}',                    -- List exports: columns in order
+  file_name       text,                                            -- Name of the generated file
+  download_count  integer NOT NULL DEFAULT 0 CHECK (download_count >= 0), -- Times downloaded
+  expires_at      timestamptz,                                     -- After this the file can no longer be downloaded
   file_id         uuid,                                            -- Generated file
   error_detail    text,                                            -- Failure detail
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Requested time
@@ -1819,6 +1835,7 @@ CREATE INDEX notifications_user_idx ON notifications (tenant_id, user_id, create
 CREATE INDEX webhook_events_status_idx ON webhook_events (status, received_at) WHERE status IN ('received','failed');
 CREATE INDEX integration_sync_runs_idx ON integration_sync_runs (tenant_id, integration_id, started_at DESC);
 CREATE INDEX export_logs_idx ON export_logs (tenant_id, created_at DESC);
+CREATE INDEX export_logs_report_idx ON export_logs (tenant_id, report_key, created_at DESC);
 CREATE INDEX audit_logs_entity_idx ON audit_logs (tenant_id, entity_type, entity_id, created_at);
 CREATE INDEX audit_logs_time_idx ON audit_logs (tenant_id, created_at);
 

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PRINCIPAL_RESOLVER } from '../../core/auth/principal';
 import { MeController, OrganizationController } from './controllers/organization.controller';
+import { ListColumnsService } from './list-columns.service';
 import { RolesController } from './controllers/roles.controller';
 import { DivisionsController, TeamsController } from './controllers/teams.controller';
 import { UsersController } from './controllers/users.controller';
@@ -18,7 +19,7 @@ import { UsersService } from './users.service';
 /** Tenants, users, roles and permissions, teams and divisions (SRS §4). */
 @Module({
   controllers: [MeController, OrganizationController, UsersController, RolesController, TeamsController, DivisionsController],
-  providers: [
+  providers: [ListColumnsService, 
     TenantRepository,
     UsersRepository,
     RolesRepository,

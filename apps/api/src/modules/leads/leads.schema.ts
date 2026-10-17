@@ -39,6 +39,7 @@ export const leads = pgTable('leads', {
   score: smallint('score').notNull().default(0),
   latestNote: text('latest_note'),
   nextFollowUpAt: timestamp('next_follow_up_at', { withTimezone: true }),
+  nextAppointmentAt: timestamp('next_appointment_at', { withTimezone: true }),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
   lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
   enquiryCount: integer('enquiry_count').notNull().default(1),

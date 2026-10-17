@@ -570,6 +570,7 @@ CREATE TABLE leads (
   score           smallint NOT NULL DEFAULT 0 CHECK (score BETWEEN 0 AND 100), -- Lead score
   latest_note     text,                                            -- Copy of the latest note (for the list view)
   next_follow_up_at timestamptz,                                   -- Next planned action
+  next_appointment_at timestamptz,                                 -- Start of the earliest scheduled appointment (Appointment Date filter)
   last_activity_at  timestamptz,                                   -- Last logged activity of any kind
   last_inbound_at   timestamptz,                                   -- Last reply / inbound contact from the lead
   enquiry_count   integer NOT NULL DEFAULT 1 CHECK (enquiry_count >= 1), -- Number of enquiries (more than 1 = re-enquired)
@@ -864,8 +865,8 @@ CREATE TABLE meetings (
   tenant_id       uuid NOT NULL,                                   -- Owning tenant
   lead_id         uuid NOT NULL,                                   -- Lead
   organizer_user_id uuid NOT NULL,                                 -- Agent attending
-  type            text NOT NULL CHECK (type IN ('meeting','viewing')), -- Meeting or property viewing
-  channel         text NOT NULL CHECK (channel IN ('google_meet','teams','in_person','phone')), -- How it happens
+  type            text NOT NULL CONSTRAINT meetings_type_check CHECK (type IN ('meeting','viewing','call','event')), -- Call, Zoom / online meeting, event or property viewing
+  channel         text NOT NULL CONSTRAINT meetings_channel_check CHECK (channel IN ('google_meet','teams','in_person','phone','online_link')), -- How it happens (online_link: a link the agent pastes, e.g. Zoom)
   booked_via      text NOT NULL DEFAULT 'agent' CHECK (booked_via IN ('agent','booking_page')), -- Booked by the agent or by the client on the booking page
   booking_page_id uuid,                                            -- Booking page used by the client
   external_meeting_id text,                                        -- Google Meet / Teams meeting ID
@@ -879,6 +880,7 @@ CREATE TABLE meetings (
   client_timezone text NOT NULL DEFAULT 'Asia/Dubai',              -- Client time zone for messages
   status          text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','completed','cancelled','no_show')), -- Status
   cancel_reason   text,                                            -- Cancellation reason
+  notes           text,                                            -- Agent's notes for the appointment
   reschedule_count smallint NOT NULL DEFAULT 0,                    -- Times rescheduled
   created_by      uuid,                                            -- Created by (empty = client via booking page)
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
@@ -1768,6 +1770,7 @@ CREATE INDEX teams_division_idx ON teams (tenant_id, division_id);
 CREATE INDEX leads_owner_idx      ON leads (tenant_id, owner_user_id, next_follow_up_at) WHERE deleted_at IS NULL;
 CREATE INDEX leads_team_idx       ON leads (tenant_id, team_id) WHERE deleted_at IS NULL;
 CREATE INDEX leads_stage_idx      ON leads (tenant_id, stage_id) WHERE deleted_at IS NULL;
+CREATE INDEX leads_next_appointment_idx ON leads (tenant_id, next_appointment_at) WHERE next_appointment_at IS NOT NULL;
 CREATE INDEX leads_followup_idx   ON leads (tenant_id, next_follow_up_at) WHERE deleted_at IS NULL AND stage_category = 'open';
 CREATE INDEX leads_score_idx      ON leads (tenant_id, score DESC, next_follow_up_at) WHERE deleted_at IS NULL;
 CREATE INDEX leads_created_idx    ON leads (tenant_id, created_at DESC);

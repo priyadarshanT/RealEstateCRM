@@ -127,7 +127,7 @@ describe('dashboard, reports, exports', () => {
 
   it('Phase 2 reports: WhatsApp / email campaign results and integration failures (SRS §8.6)', async () => {
     // A connection with 2 imported, 1 retrying and 1 failed event, and a sent campaign with mixed results.
-    const APPROVER = { id: 'b0000000-0000-0000-0000-0000000000f1', email: 'report.approver@b.ae' };
+    const APPROVER = { id: 'b0000000-0000-0000-0000-0000000000e9', email: 'report.approver@b.ae' };
     await ownerQuery(
       `INSERT INTO users (id, tenant_id, email, full_name, role_id, status)
        SELECT $1, $2, $3, 'Report Approver', id, 'active' FROM roles WHERE tenant_id = $2 AND key = 'sales_agent' ON CONFLICT (id) DO NOTHING`,

@@ -25,10 +25,11 @@ export type LeadColumnKey = (typeof LEAD_COLUMNS)[number]['key'];
 
 export const DEFAULT_COLUMNS: LeadColumnKey[] = ['name', 'stage', 'substatus', 'source', 'agent', 'nextFollowUp', 'score'];
 
-/** Dates the Calendar / Date Range can filter (Lead page §8.3). Appointment Date arrives with scheduling. */
+/** Dates the Calendar / Date Range can filter (Lead page §8.3). */
 export const LEAD_DATE_FIELDS = [
   { key: 'created', label: 'Lead Created Date' },
   { key: 'follow_up', label: 'Follow-up Date' },
+  { key: 'appointment', label: 'Appointment Date' },
   { key: 'sale_done', label: 'Sale Done Date' },
 ];
 

@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { ApiError, errorMessage } from '@/core/api';
 import { formatDateTime, isoToLocalInput, localInputToIso } from '@/core/format';
 import { byId, useColleagues } from '@/core/lookups';
-import { CHANNEL_LABEL, useMeeting, useMeetingActions } from './calendar-api';
+import { CHANNEL_LABEL, TYPE_LABEL, useMeeting, useMeetingActions } from './calendar-api';
 
 type Mode = 'view' | 'move' | 'cancel' | 'done';
 
@@ -33,7 +33,7 @@ export function MeetingDetailDialog({ meetingId, onClose, timeZone }: { meetingI
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent title={m ? `${m.type === 'viewing' ? 'Viewing' : 'Meeting'} · ${CHANNEL_LABEL[m.channel]}` : 'Meeting'}>
+      <DialogContent title={m ? `${TYPE_LABEL[m.type]} · ${CHANNEL_LABEL[m.channel]}` : 'Appointment'}>
         {meeting.isLoading ? <Loading /> : null}
         {meeting.error ? <Alert>{errorMessage(meeting.error)}</Alert> : null}
         {m ? (
@@ -59,6 +59,7 @@ export function MeetingDetailDialog({ meetingId, onClose, timeZone }: { meetingI
             {m.location ? <p><span className="text-muted-foreground">Place:</span> {m.location}</p> : null}
             {m.clientTimezone ? <p className="text-xs text-muted-foreground">Client time zone: {m.clientTimezone}</p> : null}
             {m.cancelReason ? <p><span className="text-muted-foreground">Cancelled:</span> {m.cancelReason}</p> : null}
+            {m.notes ? <p><span className="text-muted-foreground">Notes:</span> {m.notes}</p> : null}
 
             {mode === 'move' ? (
               <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">

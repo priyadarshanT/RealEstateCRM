@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { errorMessage } from '@/core/api';
 import { formatRelativeDay } from '@/core/format';
 import { useCan, useMe } from '@/core/session';
+import { AppointmentsCard } from './appointments-card';
 import { LeadActions } from './lead-actions';
 import { ConsentCard } from '@/features/messaging/consent-card';
 import { EnquiriesCard, LeadDetailsCard, ScoreCard } from './lead-details-card';
@@ -81,6 +82,7 @@ export function LeadPageScreen({ id }: { id: string }) {
           {l.responseDueAt && Date.parse(l.responseDueAt) > Date.now() ? (
             <Alert tone="warning">New lead: act before {formatRelativeDay(l.responseDueAt, tz)} or it moves to the next agent.</Alert>
           ) : null}
+          <AppointmentsCard leadId={l.id} timeZone={tz} />
           <LeadTimeline leadId={l.id} timeZone={tz} />
         </div>
       </div>

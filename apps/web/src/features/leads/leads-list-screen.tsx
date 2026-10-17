@@ -13,7 +13,7 @@ import {
   Tr,
   cn,
 } from '@crm/ui';
-import { Eye, EyeOff, Plus, Upload } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Eye, EyeOff, List, Plus, Upload } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -26,6 +26,8 @@ import { useClientPolicy } from '@/features/global-config/policy';
 import { DateRangeControl, type DateRangeValue } from '@/features/list-tools/date-range-control';
 import { ManageColumnsButton, useListColumns } from '@/features/list-tools/manage-columns';
 import { ExportLeadsButton, ExportTrackerButton } from './lead-exports';
+import { LeadsCalendar } from './leads-calendar';
+import { ScheduleDialog } from '@/features/calendar/schedule-dialog';
 import { BulkBar } from './bulk-bar';
 import { DEFAULT_COLUMNS, LEAD_COLUMNS, LEAD_DATE_FIELDS, LEAD_TABS, STATUS_TABS, type LeadColumnKey } from './columns';
 import { EMPTY_FILTERS, LeadFilters, type LeadFilterState } from './lead-filters';
@@ -77,6 +79,8 @@ export function LeadsListScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [trackerSignal, setTrackerSignal] = useState(0);
+  const [mode, setMode] = useState<'list' | 'calendar'>('list');
+  const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
   // Show Lead Counts: remembered for the browser session.
   const [showCounts, setShowCounts] = useState(false);
   useEffect(() => {
@@ -277,6 +281,14 @@ export function LeadsListScreen() {
           <ExportLeadsButton selectedIds={[...selected]} filteredCount={total} filters={exportFilters} columns={columns} onQueued={() => setTrackerSignal((n) => n + 1)} />
         ) : null}
         <ExportTrackerButton canExport={can('leads.export') && !!policy.data?.exportLeads} openSignal={trackerSignal} />
+        <div className="ml-auto inline-flex overflow-hidden rounded-md border border-border" role="group" aria-label="View">
+          <button type="button" onClick={() => setMode('list')} aria-pressed={mode === 'list'} className={cn('inline-flex items-center gap-1 px-2.5 py-1 text-xs', mode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+            <List className="size-3.5" /> List
+          </button>
+          <button type="button" onClick={() => setMode('calendar')} aria-pressed={mode === 'calendar'} className={cn('inline-flex items-center gap-1 px-2.5 py-1 text-xs', mode === 'calendar' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+            <CalendarDays className="size-3.5" /> Calendar
+          </button>
+        </div>
         {showCounts && counts.isLoading ? <span className="text-xs text-muted-foreground">Counting…</span> : null}
         {showCounts && counts.error ? (
           <span className="text-xs text-danger">
@@ -290,8 +302,9 @@ export function LeadsListScreen() {
 
       {selected.size ? <BulkBar ids={[...selected]} deletedTab={tab === 'deleted'} onDone={() => setSelected(new Set())} /> : null}
 
-      {list.error ? <Alert>{errorMessage(list.error)}</Alert> : null}
-      {list.isLoading ? (
+      {mode === 'calendar' ? <LeadsCalendar query={baseQuery} timeZone={tz} /> : null}
+      {mode === 'list' && list.error ? <Alert>{errorMessage(list.error)}</Alert> : null}
+      {mode === 'calendar' ? null : list.isLoading ? (
         <Loading />
       ) : (
         <Table>
@@ -307,6 +320,7 @@ export function LeadsListScreen() {
               {visible.map((c) => (
                 <Th key={c.key}>{c.label}</Th>
               ))}
+              <Th className="w-10" />
             </tr>
           </thead>
           <tbody>
@@ -318,13 +332,21 @@ export function LeadsListScreen() {
                 {visible.map((c) => (
                   <Td key={c.key}>{cell(lead, c.key)}</Td>
                 ))}
+                <Td>
+                  {/* Lead page §3.1–3.4: Schedule on Hot and Warm rows only. */}
+                  {lead.stageCategory === 'open' && !lead.deletedAt && lead.access !== 'view' && can('leads.edit') ? (
+                    <Button variant="ghost" size="icon" aria-label={`Schedule with ${lead.fullName}`} title="Schedule" onClick={() => setScheduleFor(lead)}>
+                      <CalendarPlus />
+                    </Button>
+                  ) : null}
+                </Td>
               </Tr>
             ))}
           </tbody>
         </Table>
       )}
-      {!list.isLoading && rows.length === 0 && !list.error ? <EmptyState title="No leads here">Try another tab or clear the filters.</EmptyState> : null}
-      {list.data?.page.hasMore ? (
+      {mode === 'list' && !list.isLoading && rows.length === 0 && !list.error ? <EmptyState title="No leads here">Try another tab or clear the filters.</EmptyState> : null}
+      {mode === 'list' && list.data?.page.hasMore ? (
         <div className="flex justify-center">
           <Button variant="outline" size="sm" disabled={list.isFetching} onClick={() => setCursor(list.data?.page.nextCursor ?? undefined)}>
             {list.isFetching ? 'Loading…' : 'Load more'}
@@ -332,6 +354,7 @@ export function LeadsListScreen() {
         </div>
       ) : null}
 
+      <ScheduleDialog open={!!scheduleFor} leadId={scheduleFor?.id ?? ''} leadName={scheduleFor?.fullName ?? ''} onClose={() => setScheduleFor(null)} />
       <NewLeadDialog open={newOpen} onOpenChange={setNewOpen} />
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>

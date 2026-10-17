@@ -71,6 +71,7 @@ export class LeadDto {
   @ApiProperty({ minimum: 0, maximum: 100 }) score!: number;
   @ApiPropertyOptional({ type: String, nullable: true }) latestNote!: string | null;
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true }) nextFollowUpAt!: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true, readOnly: true, description: 'Earliest scheduled appointment' }) nextAppointmentAt!: string | null;
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true }) responseDueAt!: string | null;
   @ApiProperty() enquiryCount!: number;
   @ApiPropertyOptional({ format: 'date-time' }) lastEnquiryAt!: string;
@@ -110,6 +111,7 @@ export class LeadDto {
       score: l.score,
       latestNote: l.latestNote,
       nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
+      nextAppointmentAt: l.nextAppointmentAt?.toISOString() ?? null,
       responseDueAt: l.responseDueAt?.toISOString() ?? null,
       enquiryCount: l.enquiryCount,
       lastEnquiryAt: l.lastEnquiryAt.toISOString(),
@@ -138,7 +140,7 @@ export class LeadPage {
 }
 
 /** Dates the Lead page range can filter (Lead Created, Follow-up, Sale Done). */
-export const LEAD_DATE_FIELDS = ['created', 'follow_up', 'sale_done'] as const;
+export const LEAD_DATE_FIELDS = ['created', 'follow_up', 'appointment', 'sale_done'] as const;
 export type LeadDateField = (typeof LEAD_DATE_FIELDS)[number];
 
 export const LEAD_TABS = ['all', 'my', 'shared', 'team', 'unassigned', 'deleted', 'hot', 'warm', 'cold', 'sale_done', 'scheduled', 'overdue'] as const;

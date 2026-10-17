@@ -5291,6 +5291,8 @@ export interface components {
             substatusId?: string | null;
             /** @description Dual Lead Ownership */
             secondaryOwnerUserId?: string | null;
+            /** @description Earliest scheduled appointment */
+            readonly nextAppointmentAt?: string | null;
             /** @description Lists: who made the latest assignment (userId empty = the system, e.g. rotation) */
             readonly assignedFrom?: null | {
                 userId?: string | null;
@@ -5602,10 +5604,16 @@ export interface components {
             leadId: string;
             /** Format: uuid */
             organizerUserId: string;
-            /** @enum {string} */
-            type: "meeting" | "viewing";
-            /** @enum {string} */
-            channel: "google_meet" | "teams" | "in_person" | "phone";
+            /**
+             * @description Call, meeting (Zoom / online), event or property viewing
+             * @enum {string}
+             */
+            type: "meeting" | "viewing" | "call" | "event";
+            /**
+             * @description online_link = a link the agent pastes (e.g. Zoom)
+             * @enum {string}
+             */
+            channel: "google_meet" | "teams" | "in_person" | "phone" | "online_link";
             /** @enum {string} */
             readonly bookedVia?: "agent" | "booking_page";
             readonly joinUrl?: string | null;
@@ -5621,18 +5629,28 @@ export interface components {
             /** @enum {string} */
             status: "scheduled" | "completed" | "cancelled" | "no_show";
             cancelReason?: string | null;
+            notes?: string | null;
         };
-        /** @description 409 AGENT_BUSY when the agent already has a meeting at that time */
+        /** @description 409 AGENT_BUSY when the agent already has a meeting at that time; 422 SCHEDULING_NOT_ALLOWED for Cold and Sale Done leads; past start times follow Enable Past Date Selection. */
         MeetingCreate: {
             /** Format: uuid */
             leadId: string;
             /** Format: uuid */
             organizerUserId: string;
-            /** @enum {string} */
-            type: "meeting" | "viewing";
-            /** @enum {string} */
-            channel: "google_meet" | "teams" | "in_person" | "phone";
+            /**
+             * @description Call, meeting (Zoom / online), event or property viewing
+             * @enum {string}
+             */
+            type: "meeting" | "viewing" | "call" | "event";
+            /**
+             * @description online_link = a link the agent pastes (e.g. Zoom)
+             * @enum {string}
+             */
+            channel: "google_meet" | "teams" | "in_person" | "phone" | "online_link";
             location?: string;
+            /** @description Required for online_link (e.g. the Zoom link) */
+            joinUrl?: string;
+            notes?: string;
             /** Format: uuid */
             projectId?: string;
             /** Format: uuid */
@@ -8500,7 +8518,7 @@ export interface operations {
                 stageId?: string;
                 substatusId?: string;
                 /** @description Which date dateFrom / dateTo filter (default created) */
-                dateField?: "created" | "follow_up" | "sale_done";
+                dateField?: "created" | "follow_up" | "appointment" | "sale_done";
                 /** @description Company time zone */
                 dateFrom?: string;
                 /** @description Company time zone; the end date is included */
@@ -8590,7 +8608,7 @@ export interface operations {
                 stageId?: string;
                 substatusId?: string;
                 /** @description Which date dateFrom / dateTo filter (default created) */
-                dateField?: "created" | "follow_up" | "sale_done";
+                dateField?: "created" | "follow_up" | "appointment" | "sale_done";
                 /** @description Company time zone */
                 dateFrom?: string;
                 /** @description Company time zone; the end date is included */
@@ -10335,6 +10353,7 @@ export interface operations {
                     /** Format: date-time */
                     endsAt?: string;
                     location?: string;
+                    notes?: string;
                 };
             };
         };

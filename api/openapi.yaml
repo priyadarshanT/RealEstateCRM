@@ -1936,6 +1936,7 @@ paths:
           enum:
           - created
           - follow_up
+          - appointment
           - sale_done
       - name: dateFrom
         in: query
@@ -2136,6 +2137,7 @@ paths:
           enum:
           - created
           - follow_up
+          - appointment
           - sale_done
       - name: dateFrom
         in: query
@@ -4210,6 +4212,8 @@ paths:
                   type: string
                   format: date-time
                 location:
+                  type: string
+                notes:
                   type: string
       responses:
         '200':
@@ -12053,6 +12057,13 @@ components:
             format: uuid
           - type: 'null'
           description: Dual Lead Ownership
+        nextAppointmentAt:
+          oneOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          readOnly: true
+          description: Earliest scheduled appointment
         assignedFrom:
           readOnly: true
           description: 'Lists: who made the latest assignment (userId empty = the system, e.g. rotation)'
@@ -12877,6 +12888,9 @@ components:
           enum:
           - meeting
           - viewing
+          - call
+          - event
+          description: Call, meeting (Zoom / online), event or property viewing
         channel:
           type: string
           enum:
@@ -12884,6 +12898,8 @@ components:
           - teams
           - in_person
           - phone
+          - online_link
+          description: online_link = a link the agent pastes (e.g. Zoom)
         bookedVia:
           type: string
           enum:
@@ -12933,6 +12949,10 @@ components:
           oneOf:
           - type: string
           - type: 'null'
+        notes:
+          oneOf:
+          - type: string
+          - type: 'null'
       required:
       - id
       - leadId
@@ -12956,6 +12976,9 @@ components:
           enum:
           - meeting
           - viewing
+          - call
+          - event
+          description: Call, meeting (Zoom / online), event or property viewing
         channel:
           type: string
           enum:
@@ -12963,8 +12986,17 @@ components:
           - teams
           - in_person
           - phone
+          - online_link
+          description: online_link = a link the agent pastes (e.g. Zoom)
         location:
           type: string
+        joinUrl:
+          type: string
+          pattern: ^https://\S{4,500}$
+          description: Required for online_link (e.g. the Zoom link)
+        notes:
+          type: string
+          maxLength: 5000
         projectId:
           type: string
           format: uuid
@@ -12992,7 +13024,8 @@ components:
       - channel
       - startsAt
       - endsAt
-      description: 409 AGENT_BUSY when the agent already has a meeting at that time
+      description: '409 AGENT_BUSY when the agent already has a meeting at that time; 422 SCHEDULING_NOT_ALLOWED for
+        Cold and Sale Done leads; past start times follow Enable Past Date Selection.'
     BookingPage:
       type: object
       properties:

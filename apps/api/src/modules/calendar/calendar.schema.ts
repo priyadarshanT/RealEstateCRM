@@ -2,7 +2,9 @@ import { boolean, jsonb, pgTable, smallint, text, timestamp, uuid } from 'drizzl
 
 // Meetings, viewings and booking pages (db/schema.sql, TASKS AND MEETINGS).
 
-export type MeetingChannel = 'google_meet' | 'teams' | 'in_person' | 'phone';
+export type MeetingChannel = 'google_meet' | 'teams' | 'in_person' | 'phone' | 'online_link';
+/** Appointment types of the Lead page: call, Zoom / online meeting, event, property viewing. */
+export type MeetingType = 'meeting' | 'viewing' | 'call' | 'event';
 export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 /** Bookable hours per weekday in the tenant time zone, e.g. { sun: [["09:00","17:00"]] }. */
 export type WeeklyHours = Partial<Record<'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat', [string, string][]>>;
@@ -28,7 +30,7 @@ export const meetings = pgTable('meetings', {
   tenantId: uuid('tenant_id').notNull(),
   leadId: uuid('lead_id').notNull(),
   organizerUserId: uuid('organizer_user_id').notNull(),
-  type: text('type').$type<'meeting' | 'viewing'>().notNull(),
+  type: text('type').$type<MeetingType>().notNull(),
   channel: text('channel').$type<MeetingChannel>().notNull(),
   bookedVia: text('booked_via').$type<'agent' | 'booking_page'>().notNull().default('agent'),
   bookingPageId: uuid('booking_page_id'),
@@ -43,6 +45,7 @@ export const meetings = pgTable('meetings', {
   clientTimezone: text('client_timezone').notNull().default('Asia/Dubai'),
   status: text('status').$type<MeetingStatus>().notNull().default('scheduled'),
   cancelReason: text('cancel_reason'),
+  notes: text('notes'),
   rescheduleCount: smallint('reschedule_count').notNull().default(0),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

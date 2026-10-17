@@ -16,18 +16,25 @@ import { OrganizationService } from '../organization/organization.service';
 import { TasksService } from '../tasks/tasks.service';
 import { CalendarChange } from './adapters/calendar-sync';
 import { MEETING_LINKS, MeetingLinkProvider } from './adapters/meeting-links';
-import { MeetingChannel, MeetingRow, meetings } from './calendar.schema';
+import { MeetingChannel, MeetingRow, meetings, MeetingType } from './calendar.schema';
 import { isTimeZone, MeetingCompleteDto, MeetingCreateDto, MeetingDto, MeetingListQuery, MeetingRescheduleDto } from './dto/calendar.dto';
 
 const PG_EXCLUSION_VIOLATION = '23P01';
-const CHANNEL_LABEL: Record<MeetingChannel, string> = { google_meet: 'Google Meet', teams: 'Microsoft Teams', in_person: 'In person', phone: 'Phone call' };
+const CHANNEL_LABEL: Record<MeetingChannel, string> = { google_meet: 'Google Meet', teams: 'Microsoft Teams', in_person: 'In person', phone: 'Phone call', online_link: 'Online meeting' };
+const TYPE_LABEL: Record<MeetingType, string> = { meeting: 'Meeting', viewing: 'Viewing', call: 'Call', event: 'Event' };
+/** Task and timeline kind of each appointment type. */
+const TASK_TYPE: Record<MeetingType, 'meeting' | 'viewing' | 'call'> = { meeting: 'meeting', viewing: 'viewing', call: 'call', event: 'meeting' };
+const ACTIVITY_TYPE: Record<MeetingType, 'meeting' | 'viewing'> = { meeting: 'meeting', viewing: 'viewing', call: 'meeting', event: 'meeting' };
 const MAX_MINUTES = 8 * 60;
 
 export interface NewMeeting {
   leadId: string;
   organizerUserId: string;
-  type: 'meeting' | 'viewing';
+  type: MeetingType;
   channel: MeetingChannel;
+  /** online_link: the link the agent pasted (e.g. Zoom). */
+  joinUrl?: string | null;
+  notes?: string | null;
   startsAt: Date;
   endsAt: Date;
   clientTimezone: string;
@@ -94,11 +101,16 @@ export class MeetingsService {
 
   async create(p: Principal, body: MeetingCreateDto): Promise<MeetingDto> {
     await this.leads.editable(p, body.leadId);
+    // Lead page §3.8: past dates follow Global Configuration › Leads › Enable Past Date Selection.
+    await this.leads.assertDateAllowed(body.startsAt, 'startsAt');
+    if (body.channel === 'online_link' && !body.joinUrl) throw Problems.validation([{ field: 'joinUrl', message: 'paste the meeting link (e.g. Zoom)' }]);
     const row = await this.schedule({
       leadId: body.leadId,
       organizerUserId: body.organizerUserId,
       type: body.type,
       channel: body.channel,
+      joinUrl: body.channel === 'online_link' ? body.joinUrl! : null,
+      notes: body.notes ?? null,
       startsAt: new Date(body.startsAt),
       endsAt: new Date(body.endsAt),
       clientTimezone: body.clientTimezone ?? (await this.tenantTimeZone()),
@@ -119,11 +131,15 @@ export class MeetingsService {
     if (!isTimeZone(m.clientTimezone)) throw Problems.validation([{ field: 'clientTimezone', message: 'an IANA time zone such as Asia/Dubai' }]);
     const organizer = await this.directory.user(m.organizerUserId);
     if (!organizer || organizer.status !== 'active') throw Problems.validation([{ field: 'organizerUserId', message: 'not an active user' }]);
-    await this.assertFree(m.organizerUserId, m.startsAt, m.endsAt);
     const lead = (await this.leads.findRow(m.leadId))!;
-    const title = `${m.type === 'viewing' ? 'Viewing' : 'Meeting'} · ${lead.fullName}`;
+    // Lead page §3.3–3.4: only Hot and Warm (open) leads get new appointments, from every entry point.
+    if (lead.stageCategory !== 'open') {
+      throw new ProblemException(422, 'SCHEDULING_NOT_ALLOWED', 'Lead not open for appointments', 'Cold and Sale Done leads cannot get new appointments. Move the lead to Hot or Warm first.');
+    }
+    await this.assertFree(m.organizerUserId, m.startsAt, m.endsAt);
+    const title = `${TYPE_LABEL[m.type]} · ${lead.fullName}`;
 
-    let joinUrl: string | null = null;
+    let joinUrl: string | null = m.channel === 'online_link' ? (m.joinUrl ?? null) : null;
     let externalMeetingId: string | null = null;
     if (m.channel === 'google_meet' || m.channel === 'teams') {
       const account = await this.integrations.connectedUserAccount(m.channel === 'google_meet' ? 'google_workspace' : 'microsoft_365', m.organizerUserId);
@@ -156,6 +172,7 @@ export class MeetingsService {
       externalMeetingId,
       joinUrl,
       location: m.location ?? null,
+      notes: m.notes ?? null,
       projectId: m.projectId ?? null,
       unitId: m.unitId ?? null,
       dealId: m.dealId ?? null,
@@ -168,22 +185,32 @@ export class MeetingsService {
       leadId: m.leadId,
       meetingId: row.id,
       assignedUserId: m.organizerUserId,
-      type: m.type,
+      type: TASK_TYPE[m.type],
       title: `${title} (${CHANNEL_LABEL[m.channel]})`,
       dueAt: m.startsAt,
       durationMinutes: minutes(m.startsAt, m.endsAt),
       createdBy: m.createdBy,
     });
     await this.leads.addActivity(m.leadId, {
-      type: m.type,
-      summary: `${m.type === 'viewing' ? 'Viewing' : 'Meeting'} ${m.bookingPageId ? 'booked via booking page' : 'scheduled'}: ${await this.when(m.startsAt)} · ${CHANNEL_LABEL[m.channel]}`,
-      body: [joinUrl ? `Link: ${joinUrl}` : null, m.location ? `Location: ${m.location}` : null].filter(Boolean).join('\n') || null,
+      type: ACTIVITY_TYPE[m.type],
+      summary: `${TYPE_LABEL[m.type]} ${m.bookingPageId ? 'booked via booking page' : 'scheduled'}: ${await this.when(m.startsAt)} · ${CHANNEL_LABEL[m.channel]}`,
+      body: [joinUrl ? `Link: ${joinUrl}` : null, m.location ? `Location: ${m.location}` : null, m.notes ? `Notes: ${m.notes}` : null].filter(Boolean).join('\n') || null,
       actorUserId: m.createdBy,
       links: { meetingId: row.id },
     });
     await this.audit.record('create', 'meetings', row.id, { startsAt: [null, row.startsAt.toISOString()], channel: [null, row.channel] }, m.createdBy ?? undefined);
     if (m.sendConfirmation) await this.confirm(row, 'confirmed');
+    await this.refreshNextAppointment(m.leadId);
     return row;
+  }
+
+  /** Keeps the lead's next appointment date (Appointment Date filter, calendar) in step with its meetings. */
+  private async refreshNextAppointment(leadId: string): Promise<void> {
+    const [row] = await this.db.current
+      .select({ first: sql<Date | null>`min(${meetings.startsAt})` })
+      .from(meetings)
+      .where(and(eq(meetings.leadId, leadId), eq(meetings.status, 'scheduled')));
+    await this.leads.setNextAppointment(leadId, row?.first ? new Date(row.first) : null);
   }
 
   async reschedule(p: Principal, id: string, body: MeetingRescheduleDto): Promise<MeetingDto> {
@@ -194,18 +221,21 @@ export class MeetingsService {
     const endsAt = body.endsAt ? new Date(body.endsAt) : new Date(startsAt.getTime() + (before.endsAt.getTime() - before.startsAt.getTime()));
     checkTimes(startsAt, endsAt);
     const moved = startsAt.getTime() !== before.startsAt.getTime() || endsAt.getTime() !== before.endsAt.getTime();
+    if (moved && body.startsAt) await this.leads.assertDateAllowed(body.startsAt, 'startsAt');
     if (moved) await this.assertFree(before.organizerUserId, startsAt, endsAt, id);
     const [row] = await this.updateOrBusy(id, {
       startsAt,
       endsAt,
       location: body.location ?? before.location,
+      notes: body.notes ?? before.notes,
       ...(moved ? { rescheduleCount: before.rescheduleCount + 1 } : {}),
       updatedAt: new Date(),
     });
     if (moved) {
       await this.tasks.syncMeetingTask(id, { dueAt: startsAt, durationMinutes: minutes(startsAt, endsAt) });
-      await this.leads.addActivity(before.leadId, { type: before.type, summary: `${before.type === 'viewing' ? 'Viewing' : 'Meeting'} moved to ${await this.when(startsAt)}`, actorUserId: p.userId, links: { meetingId: id } });
+      await this.leads.addActivity(before.leadId, { type: ACTIVITY_TYPE[before.type], summary: `${TYPE_LABEL[before.type]} rescheduled to ${await this.when(startsAt)}`, actorUserId: p.userId, links: { meetingId: id } });
       await this.confirm(row!, 'moved');
+      await this.refreshNextAppointment(before.leadId);
     }
     await this.audit.record('update', 'meetings', id, { startsAt: [before.startsAt.toISOString(), startsAt.toISOString()], location: [before.location, row!.location] });
     await this.leads.recordAction(before.leadId, p.userId);
@@ -222,9 +252,10 @@ export class MeetingsService {
       .where(eq(meetings.id, id))
       .returning();
     await this.tasks.syncMeetingTask(id, { status: 'cancelled' });
-    await this.leads.addActivity(before.leadId, { type: before.type, summary: `${before.type === 'viewing' ? 'Viewing' : 'Meeting'} cancelled`, body: reason.trim(), actorUserId: p.userId, links: { meetingId: id } });
+    await this.leads.addActivity(before.leadId, { type: ACTIVITY_TYPE[before.type], summary: `${TYPE_LABEL[before.type]} cancelled`, body: reason.trim(), actorUserId: p.userId, links: { meetingId: id } });
     await this.audit.record('update', 'meetings', id, { status: ['scheduled', 'cancelled'] });
     await this.confirm(row!, 'cancelled');
+    await this.refreshNextAppointment(before.leadId);
     return MeetingDto.from(row!);
   }
 
@@ -235,8 +266,9 @@ export class MeetingsService {
     if (before.status !== 'scheduled') throw new ProblemException(409, 'CONFLICT', 'Meeting not scheduled', `The meeting is ${before.status}.`);
     const [row] = await this.db.current.update(meetings).set({ status: body.status, updatedAt: new Date() }).where(eq(meetings.id, id)).returning();
     await this.tasks.syncMeetingTask(id, { status: 'completed', userId: p.userId });
-    const label = before.type === 'viewing' ? 'Viewing' : 'Meeting';
-    await this.leads.addActivity(before.leadId, { type: before.type, summary: body.status === 'no_show' ? `${label}: client did not come` : `${label} held`, body: body.note ?? null, actorUserId: p.userId, links: { meetingId: id } });
+    const label = TYPE_LABEL[before.type];
+    await this.refreshNextAppointment(before.leadId);
+    await this.leads.addActivity(before.leadId, { type: ACTIVITY_TYPE[before.type], summary: body.status === 'no_show' ? `${label}: client did not come` : `${label} held`, body: body.note ?? null, actorUserId: p.userId, links: { meetingId: id } });
     if (body.nextAction) {
       await this.tasks.create(p, {
         leadId: before.leadId,
@@ -267,7 +299,7 @@ export class MeetingsService {
       )
       .limit(1);
     if (!m) return;
-    const label = m.type === 'viewing' ? 'Viewing' : 'Meeting';
+    const label = TYPE_LABEL[m.type];
     if (change.status === 'cancelled') {
       const [row] = await this.db.current
         .update(meetings)
@@ -275,7 +307,8 @@ export class MeetingsService {
         .where(eq(meetings.id, m.id))
         .returning();
       await this.tasks.syncMeetingTask(m.id, { status: 'cancelled' });
-      await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} cancelled in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+      await this.leads.addActivity(m.leadId, { type: ACTIVITY_TYPE[m.type], summary: `${label} cancelled in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+      await this.refreshNextAppointment(m.leadId);
       await this.audit.record('update', 'meetings', m.id, { status: ['scheduled', 'cancelled'] });
       await this.confirm(row!, 'cancelled');
       return;
@@ -287,11 +320,12 @@ export class MeetingsService {
     if (!attempt.ok && !(attempt.error instanceof ProblemException && attempt.error.code === 'AGENT_BUSY')) throw attempt.error;
     const moved = attempt.ok ? attempt.value : undefined;
     if (!moved) {
-      await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} not moved: ${calendarName} change clashes with another meeting`, actorUserId: null, links: { meetingId: m.id } });
+      await this.leads.addActivity(m.leadId, { type: ACTIVITY_TYPE[m.type], summary: `${label} not moved: ${calendarName} change clashes with another meeting`, actorUserId: null, links: { meetingId: m.id } });
       return;
     }
     await this.tasks.syncMeetingTask(m.id, { dueAt: change.startsAt, durationMinutes: minutes(change.startsAt, change.endsAt) });
-    await this.leads.addActivity(m.leadId, { type: m.type, summary: `${label} moved to ${await this.when(change.startsAt)} in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+    await this.leads.addActivity(m.leadId, { type: ACTIVITY_TYPE[m.type], summary: `${label} moved to ${await this.when(change.startsAt)} in ${calendarName}`, actorUserId: null, links: { meetingId: m.id } });
+    await this.refreshNextAppointment(m.leadId);
     await this.audit.record('update', 'meetings', m.id, { startsAt: [m.startsAt.toISOString(), change.startsAt.toISOString()] });
     await this.confirm(moved[0]!, 'moved');
   }
@@ -346,7 +380,7 @@ export class MeetingsService {
   private async confirm(m: MeetingRow, what: 'confirmed' | 'moved' | 'cancelled'): Promise<void> {
     const organizer = await this.directory.user(m.organizerUserId);
     const when = new Intl.DateTimeFormat('en-GB', { timeZone: m.clientTimezone, weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).format(m.startsAt);
-    const kind = m.type === 'viewing' ? 'viewing' : 'meeting';
+    const kind = TYPE_LABEL[m.type].toLowerCase();
     const subject = what === 'cancelled' ? `Your ${kind} is cancelled` : what === 'moved' ? `Your ${kind} has a new time` : `Your ${kind} is confirmed`;
     const body = [
       what === 'cancelled' ? `Your ${kind} on ${when} has been cancelled.` : `${what === 'moved' ? 'New time' : 'Confirmed'}: ${when} (${m.clientTimezone}).`,

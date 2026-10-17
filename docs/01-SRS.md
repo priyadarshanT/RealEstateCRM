@@ -185,6 +185,13 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 12. Clients see times in their own time zone.
 13. Sync with Google Calendar or Microsoft 365.
 
+**Appointments from the Lead page (stakeholder update 17 October 2026)**
+
+14. A **Schedule** button on each Hot or Warm lead (in the list and on the lead page): appointment type (Call, Zoom / online meeting, Event, Property viewing), date and time, client time zone, duration, assigned agent, notes, and the place or meeting link (an agent can paste a Zoom link; an automatic Zoom link needs the Zoom integration, which comes later). No Schedule for Cold or Sale Done, and no new appointments for them from any other entry point.
+15. Choosing the Zoom Schedule or Viewing Schedule substatus opens the Schedule form for that date. Past times follow Enable Past Date Selection. Appointments can be rescheduled, cancelled or marked done; the history stays on the timeline.
+16. Moving a lead to Cold or Sale Done shows its pending appointments and asks whether to keep or cancel them; nothing is cancelled silently.
+17. The lead list has a **Calendar View** (month, week, day) of follow-ups and appointments; an entry opens the lead; switching between list and calendar keeps the filters. The date range can filter on **Appointment Date** (the lead's next appointment).
+
 ## 4. Team and permissions · Phase 1
 
 The Team menu has three parts.

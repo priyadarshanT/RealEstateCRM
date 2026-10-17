@@ -456,6 +456,11 @@ export class LeadsService {
     await this.repo.touch(leadId, { responseDueAt: until });
   }
 
+  /** The calendar module keeps each lead's earliest scheduled appointment here (Appointment Date filter). */
+  async setNextAppointment(leadId: string, at: Date | null): Promise<void> {
+    await this.repo.touch(leadId, { nextAppointmentAt: at });
+  }
+
   /** Rotation is off or the rule is gone: the lead stays with its owner without a timer. */
   async clearResponseTimer(leadId: string): Promise<void> {
     await this.repo.touch(leadId, { responseDueAt: null, rotationRuleId: null, rotationCount: 0 });
@@ -645,7 +650,7 @@ export class LeadsService {
     // Calendar / Date Range: the chosen date field, whole days in the company time zone, end date included.
     if (f.dateFrom || f.dateTo) {
       const tz = await this.companyTimeZone();
-      const column = f.dateField === 'follow_up' ? leads.nextFollowUpAt : f.dateField === 'sale_done' ? leads.closedAt : leads.createdAt;
+      const column = f.dateField === 'follow_up' ? leads.nextFollowUpAt : f.dateField === 'appointment' ? leads.nextAppointmentAt : f.dateField === 'sale_done' ? leads.closedAt : leads.createdAt;
       if (f.dateField === 'sale_done') c.push(eq(leads.stageId, (await this.stageByKey('sale_done')).id));
       if (f.dateFrom) c.push(gte(column, zonedDayStart(f.dateFrom, tz)));
       if (f.dateTo) c.push(lt(column, zonedDayAfter(f.dateTo, tz)));

@@ -5,7 +5,8 @@ import { PageInfo, PageQuery } from '../../../core/http/pagination';
 import { IsUuid } from '../../../core/http/validators';
 import { BookingPageRow, MeetingRow } from '../calendar.schema';
 
-const CHANNELS = ['google_meet', 'teams', 'in_person', 'phone'] as const;
+const CHANNELS = ['google_meet', 'teams', 'in_person', 'phone', 'online_link'] as const;
+const TYPES = ['meeting', 'viewing', 'call', 'event'] as const;
 const STATUSES = ['scheduled', 'completed', 'cancelled', 'no_show'] as const;
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 const E164 = /^\+[1-9][0-9]{6,14}$/;
@@ -25,7 +26,7 @@ export class MeetingDto {
   @ApiProperty({ format: 'uuid', readOnly: true }) id!: string;
   @ApiProperty({ format: 'uuid' }) leadId!: string;
   @ApiProperty({ format: 'uuid' }) organizerUserId!: string;
-  @ApiProperty({ enum: ['meeting', 'viewing'] }) type!: 'meeting' | 'viewing';
+  @ApiProperty({ enum: TYPES }) type!: MeetingRow['type'];
   @ApiProperty({ enum: CHANNELS }) channel!: MeetingRow['channel'];
   @ApiPropertyOptional({ enum: ['agent', 'booking_page'], readOnly: true }) bookedVia!: 'agent' | 'booking_page';
   @ApiPropertyOptional({ type: String, nullable: true, readOnly: true }) joinUrl!: string | null;
@@ -38,6 +39,7 @@ export class MeetingDto {
   @ApiPropertyOptional() clientTimezone!: string;
   @ApiProperty({ enum: STATUSES }) status!: MeetingRow['status'];
   @ApiPropertyOptional({ type: String, nullable: true }) cancelReason!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) notes!: string | null;
 
   static from(m: MeetingRow): MeetingDto {
     return {
@@ -57,6 +59,7 @@ export class MeetingDto {
       clientTimezone: m.clientTimezone,
       status: m.status,
       cancelReason: m.cancelReason,
+      notes: m.notes,
     };
   }
 }
@@ -78,8 +81,13 @@ export class MeetingListQuery extends PageQuery {
 export class MeetingCreateDto {
   @ApiProperty({ format: 'uuid' }) @IsUuid() leadId!: string;
   @ApiProperty({ format: 'uuid' }) @IsUuid() organizerUserId!: string;
-  @ApiProperty({ enum: ['meeting', 'viewing'] }) @IsIn(['meeting', 'viewing']) type!: 'meeting' | 'viewing';
+  @ApiProperty({ enum: TYPES, description: 'Call, meeting (Zoom / online), event or property viewing' }) @IsIn(TYPES) type!: MeetingRow['type'];
   @ApiProperty({ enum: CHANNELS }) @IsIn(CHANNELS) channel!: MeetingRow['channel'];
+  @ApiPropertyOptional({ description: 'online_link: the meeting link (e.g. Zoom)' })
+  @IsOptional()
+  @Matches(/^https:\/\/\S{4,500}$/, { message: 'joinUrl must be an https link' })
+  joinUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) notes?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) location?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() projectId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() unitId?: string;
@@ -91,6 +99,7 @@ export class MeetingCreateDto {
 }
 
 export class MeetingRescheduleDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) notes?: string;
   @ApiPropertyOptional({ format: 'date-time' }) @IsOptional() @IsDateString() startsAt?: string;
   @ApiPropertyOptional({ format: 'date-time' }) @IsOptional() @IsDateString() endsAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) location?: string;

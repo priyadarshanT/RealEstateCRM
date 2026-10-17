@@ -67,7 +67,13 @@ export class TasksService {
     const missing = (['type', 'title', 'dueAt'] as const).filter((f) => !body[f]);
     if (missing.length) throw Problems.validation(missing.map((field) => ({ field, message: `${field} is required` })));
     if (body.type !== 'personal' && !body.leadId) throw Problems.validation([{ field: 'leadId', message: 'required for lead tasks' }]);
-    if (body.leadId) await this.leads.editable(p, body.leadId);
+    if (body.leadId) {
+      const { lead } = await this.leads.editable(p, body.leadId);
+      // Lead page §3.3: Cold and Sale Done leads get no new meetings or viewings from any entry point.
+      if ((body.type === 'meeting' || body.type === 'viewing') && lead.stageCategory !== 'open') {
+        throw new ProblemException(422, 'SCHEDULING_NOT_ALLOWED', 'Lead not open for appointments', 'Cold and Sale Done leads cannot get new appointments. Move the lead to Hot or Warm first.');
+      }
+    }
     const assignee = body.assignedUserId ?? p.userId;
     await this.assertAssignee(p, assignee);
     const [task] = await this.db.current
@@ -243,7 +249,7 @@ export class TasksService {
   }
 
   /** The calendar task for a meeting or viewing (no signed-in user when a client books on the booking page). */
-  async createForMeeting(input: { leadId: string; meetingId: string; assignedUserId: string; type: 'meeting' | 'viewing'; title: string; dueAt: Date; durationMinutes: number; createdBy: string | null }): Promise<TaskRow> {
+  async createForMeeting(input: { leadId: string; meetingId: string; assignedUserId: string; type: 'meeting' | 'viewing' | 'call'; title: string; dueAt: Date; durationMinutes: number; createdBy: string | null }): Promise<TaskRow> {
     const [task] = await this.db.current
       .insert(tasks)
       .values({

@@ -27,7 +27,8 @@ export function BookingPageEditor({ open, onClose }: { open: boolean; onClose: (
   const save = useSaveBookingPage();
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
-  const [channel, setChannel] = useState<MeetingChannel>('google_meet');
+  // The client books a slot; a pasted link (online_link) needs an agent, so it is not offered here.
+  const [channel, setChannel] = useState<Exclude<MeetingChannel, 'online_link'>>('google_meet');
   const [duration, setDuration] = useState(30);
   const [buffer, setBuffer] = useState(10);
   const [notice, setNotice] = useState(2);
@@ -41,7 +42,7 @@ export function BookingPageEditor({ open, onClose }: { open: boolean; onClose: (
     const name = me.data?.user.fullName ?? '';
     setSlug(p?.slug ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60));
     setTitle(p?.title ?? `Book a call with ${name}`);
-    setChannel((p?.meetingChannel as MeetingChannel) ?? 'google_meet');
+    setChannel((p?.meetingChannel as Exclude<MeetingChannel, 'online_link'>) ?? 'google_meet');
     setDuration(p?.durationMinutes ?? 30);
     setBuffer(p?.bufferMinutes ?? 10);
     setNotice(p?.minNoticeHours ?? 2);
@@ -91,8 +92,8 @@ export function BookingPageEditor({ open, onClose }: { open: boolean; onClose: (
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </Field>
             <Field label="Meeting type">
-              <Select value={channel} onChange={(e) => setChannel(e.target.value as MeetingChannel)}>
-                {(Object.keys(CHANNEL_LABEL) as MeetingChannel[]).map((c) => (
+              <Select value={channel} onChange={(e) => setChannel(e.target.value as Exclude<MeetingChannel, 'online_link'>)}>
+                {(Object.keys(CHANNEL_LABEL) as MeetingChannel[]).filter((c) => c !== 'online_link').map((c) => (
                   <option key={c} value={c}>
                     {CHANNEL_LABEL[c]}
                   </option>

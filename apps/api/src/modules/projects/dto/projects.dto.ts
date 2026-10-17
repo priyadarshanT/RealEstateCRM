@@ -1,9 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { PageInfo, PageQuery } from '../../../core/http/pagination';
 import { IsDateOnly, IsUuid } from '../../../core/http/validators';
-import { BuildingRow, CONSTRUCTION_STATUSES, DeveloperRow, ProjectRow, PROPERTY_TYPES, UNIT_STATUSES, UnitChangeRow, UnitRow, UnitStatus } from '../projects.schema';
+import { BuildingRow, CONSTRUCTION_STATUSES, DeveloperRow, PROJECT_CATEGORIES, ProjectRow, PROPERTY_TYPES, UNIT_STATUSES, UnitChangeRow, UnitRow, UnitStatus } from '../projects.schema';
 
 const MONEY = /^\d+(\.\d{1,2})?$/;
 const nullableString = { type: String, nullable: true } as const;
@@ -68,8 +68,14 @@ export class ProjectDto {
   @ApiPropertyOptional(nullableUuid) brochureFileId!: string | null;
   @ApiPropertyOptional() isActive!: boolean;
   @ApiPropertyOptional({ type: InventoryDto, readOnly: true }) inventory!: InventoryDto;
+  @ApiProperty({ enum: PROJECT_CATEGORIES }) category!: ProjectRow['category'];
+  @ApiPropertyOptional({ ...nullableUuid, description: 'Assigned To: person responsible for the project' }) assignedUserId!: string | null;
+  @ApiPropertyOptional({ type: Object, description: 'Custom field values by key' }) customValues!: Record<string, unknown>;
+  @ApiPropertyOptional({ type: () => StartingPriceDto, nullable: true, readOnly: true, description: 'Lowest price of an available unit' }) startingPrice!: StartingPriceDto | null;
+  @ApiPropertyOptional({ format: 'date-time', readOnly: true }) createdAt!: string;
+  @ApiPropertyOptional({ format: 'date-time', readOnly: true }) updatedAt!: string;
 
-  static from(p: ProjectRow, inventory: InventoryDto): ProjectDto {
+  static from(p: ProjectRow, inventory: InventoryDto, startingPrice: StartingPriceDto | null = null): ProjectDto {
     return {
       id: p.id,
       developerId: p.developerId,
@@ -86,19 +92,50 @@ export class ProjectDto {
       brochureFileId: p.brochureFileId,
       isActive: p.isActive,
       inventory,
+      category: p.category,
+      assignedUserId: p.assignedUserId,
+      customValues: p.customValues ?? {},
+      startingPrice,
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: new Date(p.updatedAt).toISOString(),
     };
   }
 }
 
+export class StartingPriceDto {
+  @ApiProperty() amount!: string;
+  @ApiProperty() currency!: string;
+}
+
 export class ProjectPage {
   @ApiProperty({ type: [ProjectDto] }) data!: ProjectDto[];
-  @ApiProperty({ type: PageInfo }) page!: PageInfo;
+  @ApiProperty({ type: PageInfo }) page!: PageInfo & { total?: number };
 }
+
+export class CategoryCountDto {
+  @ApiProperty({ enum: PROJECT_CATEGORIES }) category!: ProjectRow['category'];
+  @ApiProperty() count!: number;
+}
+
+export class CategoryCountList {
+  @ApiProperty({ type: [CategoryCountDto] }) data!: CategoryCountDto[];
+  @ApiProperty({ description: 'All categories together' }) total!: number;
+}
+
+/** Dates the Project page range can filter (Created, Updated, Handover). */
+export const PROJECT_DATE_FIELDS = ['created', 'updated', 'handover'] as const;
 
 export class ProjectListQuery extends PageQuery {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() developerId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) q?: string;
   @ApiPropertyOptional() @IsOptional() @Transform(toBool) @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional({ enum: PROJECT_CATEGORIES }) @IsOptional() @IsIn(PROJECT_CATEGORIES) category?: ProjectRow['category'];
+  @ApiPropertyOptional({ enum: CONSTRUCTION_STATUSES }) @IsOptional() @IsIn(CONSTRUCTION_STATUSES) constructionStatus?: ProjectRow['constructionStatus'];
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUuid() assignedUserId?: string;
+  @ApiPropertyOptional({ enum: PROJECT_DATE_FIELDS, description: 'Which date dateFrom / dateTo filter (default created)' }) @IsOptional() @IsIn(PROJECT_DATE_FIELDS) dateField?: (typeof PROJECT_DATE_FIELDS)[number];
+  @ApiPropertyOptional({ format: 'date', description: 'Company time zone' }) @IsOptional() @IsDateOnly() dateFrom?: string;
+  @ApiPropertyOptional({ format: 'date', description: 'Company time zone; the end date is included' }) @IsOptional() @IsDateOnly() dateTo?: string;
+  @ApiPropertyOptional() @IsOptional() @Transform(toBool) @IsBoolean() total?: boolean;
 }
 
 export class ProjectInputDto {
@@ -117,6 +154,12 @@ export class ProjectInputDto {
   @ApiPropertyOptional(nullableString) @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) paymentPlan?: string | null;
   @ApiPropertyOptional(nullableUuid) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUuid() brochureFileId?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional({ enum: PROJECT_CATEGORIES }) @IsOptional() @IsIn(PROJECT_CATEGORIES) category?: ProjectRow['category'];
+  @ApiPropertyOptional(nullableUuid) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUuid() assignedUserId?: string | null;
+  @ApiPropertyOptional({ type: Object, description: 'Custom field values by key (null clears one)' }) @IsOptional() @IsObject() customValues?: Record<string, unknown>;
+  @IsOptional() startingPrice?: unknown;
+  @IsOptional() createdAt?: unknown;
+  @IsOptional() updatedAt?: unknown;
 }
 
 // ---------------------------------------------------------------- buildings (components.schemas.Building)

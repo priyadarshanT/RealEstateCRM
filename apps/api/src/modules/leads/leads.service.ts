@@ -199,6 +199,21 @@ export class LeadsService {
     return rows.map((l) => ({ dto: maskContact(LeadDto.from(l, projects.get(l.id)), masked), assignedFrom: assigned.get(l.id) ?? null, closedAt: l.closedAt }));
   }
 
+  /**
+   * Lead Count per project (Project page): distinct, not deleted leads linked to each project that this user may
+   * see. Separate from the project totals and the export count.
+   */
+  async projectLeadCounts(p: Principal, projectIds: string[]): Promise<Map<string, number>> {
+    if (!projectIds.length) return new Map();
+    const rows = await this.db.current
+      .select({ projectId: leadProjects.projectId, n: sql<number>`count(DISTINCT ${leads.id})::int` })
+      .from(leadProjects)
+      .innerJoin(leads, eq(leads.id, leadProjects.leadId))
+      .where(and(inArray(leadProjects.projectId, projectIds), isNull(leads.deletedAt), await this.scope.visible(p)))
+      .groupBy(leadProjects.projectId);
+    return new Map(rows.map((r) => [r.projectId, r.n]));
+  }
+
   /** How many leads an export would contain (shown before confirming). */
   async exportCount(p: Principal, query: LeadListQuery & { leadIds?: string[] }): Promise<number> {
     const where = and(

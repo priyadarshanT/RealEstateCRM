@@ -1,9 +1,12 @@
-import { boolean, char, date, numeric, pgTable, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, char, date, jsonb, numeric, pgTable, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 // Projects and inventory (db/schema.sql, PROJECTS AND INVENTORY): developers, projects, buildings, units and the
 // history of every unit price and status change.
 
 export const CONSTRUCTION_STATUSES = ['off_plan', 'under_construction', 'ready'] as const;
+/** Project page tabs (migration 0010). */
+export const PROJECT_CATEGORIES = ['residential', 'commercial', 'agricultural'] as const;
+export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 export const PROPERTY_TYPES = ['apartment', 'villa', 'townhouse', 'penthouse', 'duplex', 'office', 'retail', 'plot'] as const;
 export const UNIT_STATUSES = ['available', 'on_hold', 'booked', 'sold'] as const;
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
@@ -38,6 +41,9 @@ export const projects = pgTable('projects', {
   paymentPlan: text('payment_plan'),
   brochureFileId: uuid('brochure_file_id'),
   isActive: boolean('is_active').notNull().default(true),
+  category: text('category').$type<ProjectCategory>().notNull().default('residential'),
+  assignedUserId: uuid('assigned_user_id'),
+  customValues: jsonb('custom_values').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 });

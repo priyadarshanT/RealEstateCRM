@@ -47,9 +47,9 @@ describe('organization module', () => {
   });
 
   describe('roles and permissions', () => {
-    it('lists the 25 permissions and the 7 built-in roles; only Admin may export', async () => {
+    it('lists the 26 permissions and the 7 built-in roles; only Admin may export', async () => {
       const perms = await admin.get('/api/v1/permissions').expect(200);
-      expect(perms.body.data).toHaveLength(25);
+      expect(perms.body.data).toHaveLength(26);
       const roles = await admin.get('/api/v1/roles').expect(200);
       const builtIn = roles.body.data.filter((r: { isSystem: boolean }) => r.isSystem);
       expect(builtIn.map((r: { key: string }) => r.key).sort()).toEqual(
@@ -57,6 +57,8 @@ describe('organization module', () => {
       );
       const exporters = roles.body.data.filter((r: { permissions: string[] }) => r.permissions.includes('leads.export'));
       expect(exporters.map((r: { key: string }) => r.key)).toEqual(['admin']);
+      const projectExporters = roles.body.data.filter((r: { permissions: string[] }) => r.permissions.includes('projects.export'));
+      expect(projectExporters.map((r: { key: string }) => r.key)).toEqual(['admin']);
     });
 
     it('agents and team leaders cannot manage roles', async () => {

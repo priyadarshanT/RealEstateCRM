@@ -130,6 +130,24 @@ export class StatusCountDto {
   @ApiProperty() count!: number;
 }
 
+export class ProjectLeadCountQuery {
+  @ApiProperty({ type: String, description: 'Comma-separated project IDs (max 200)' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((v) => v.trim()).filter(Boolean) : value))
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUuid({ each: true })
+  projectIds!: string[];
+}
+
+export class ProjectLeadCountDto {
+  @ApiProperty({ format: 'uuid' }) projectId!: string;
+  @ApiProperty() count!: number;
+}
+
+export class ProjectLeadCountList {
+  @ApiProperty({ type: [ProjectLeadCountDto] }) data!: ProjectLeadCountDto[];
+}
+
 export class StatusCountList {
   @ApiProperty({ type: [StatusCountDto] }) data!: StatusCountDto[];
 }

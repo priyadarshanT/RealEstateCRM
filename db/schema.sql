@@ -465,12 +465,35 @@ CREATE TABLE projects (
   payment_plan    text,                                            -- Payment plan, e.g. 80/20
   brochure_file_id uuid,                                           -- Project brochure
   is_active       boolean NOT NULL DEFAULT true,                   -- Active flag
+  category        text NOT NULL DEFAULT 'residential' CHECK (category IN ('residential','commercial','agricultural')), -- Project page tabs
+  assigned_user_id uuid,                                           -- Person responsible for the project (Assigned To)
+  custom_values   jsonb NOT NULL DEFAULT '{}',                     -- Values of project_custom_fields, by key
   created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
   updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
   UNIQUE (tenant_id, id),
   UNIQUE (tenant_id, developer_id, name),
   FOREIGN KEY (tenant_id, developer_id) REFERENCES developers(tenant_id, id),
   FOREIGN KEY (tenant_id, brochure_file_id) REFERENCES files(tenant_id, id)
+);
+-- Assigned To (migration 0010): users is created before projects, so the key is declared here.
+ALTER TABLE projects ADD CONSTRAINT projects_assigned_user_fk FOREIGN KEY (tenant_id, assigned_user_id) REFERENCES users(tenant_id, id);
+
+--- table project_custom_fields | Projects | Extra project fields the Admin adds (Manage Columns › Add Custom Field).
+CREATE TABLE project_custom_fields (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),      -- Field ID
+  tenant_id       uuid NOT NULL REFERENCES tenants(id),            -- Owning tenant
+  key             text NOT NULL CHECK (key ~ '^[a-z][a-z0-9_]{0,40}$'), -- Stable key in projects.custom_values
+  label           text NOT NULL CHECK (length(btrim(label)) BETWEEN 1 AND 80), -- Name shown in forms and columns
+  field_type      text NOT NULL CHECK (field_type IN ('text','number','date','dropdown','checkbox')), -- Value type
+  is_required     boolean NOT NULL DEFAULT false,                  -- Must be filled on a project
+  options         text[] NOT NULL DEFAULT '{}',                    -- Dropdown choices
+  sort_order      smallint NOT NULL DEFAULT 0,                     -- Order in forms
+  is_active       boolean NOT NULL DEFAULT true,                   -- Turned off fields stay on old projects
+  created_at      timestamptz NOT NULL DEFAULT now(),              -- Created time
+  updated_at      timestamptz NOT NULL DEFAULT now(),              -- Last update time
+  UNIQUE (tenant_id, id),
+  UNIQUE (tenant_id, key),
+  CHECK (field_type <> 'dropdown' OR cardinality(options) > 0)
 );
 
 --- table buildings | Projects | Buildings or phases within a project.
@@ -1769,6 +1792,7 @@ CREATE INDEX teams_division_idx ON teams (tenant_id, division_id);
 
 CREATE INDEX leads_owner_idx      ON leads (tenant_id, owner_user_id, next_follow_up_at) WHERE deleted_at IS NULL;
 CREATE INDEX leads_team_idx       ON leads (tenant_id, team_id) WHERE deleted_at IS NULL;
+CREATE INDEX projects_category_idx ON projects (tenant_id, category);
 CREATE INDEX leads_stage_idx      ON leads (tenant_id, stage_id) WHERE deleted_at IS NULL;
 CREATE INDEX leads_next_appointment_idx ON leads (tenant_id, next_appointment_at) WHERE next_appointment_at IS NOT NULL;
 CREATE INDEX leads_followup_idx   ON leads (tenant_id, next_follow_up_at) WHERE deleted_at IS NULL AND stage_category = 'open';

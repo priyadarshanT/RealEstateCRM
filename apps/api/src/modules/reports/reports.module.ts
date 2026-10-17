@@ -1,3 +1,4 @@
+import { ProjectExportsController, ProjectExportsService } from './project-exports';
 import { SettingsModule } from '../settings/settings.module';
 import { LeadExportsController, LeadExportsService } from './lead-exports';
 import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
@@ -85,8 +86,8 @@ export class ReportsController {
 /** Reports, exports and the export log (SRS §8). */
 @Module({
   imports: [LeadsModule, TasksModule, MarketingModule, EventsModule, DashboardModule, NotificationsModule, OrganizationModule, MessagingModule, IntegrationsModule, DealsModule, FinanceModule, AttendanceModule, ProjectsModule, SettingsModule],
-  controllers: [ReportsController, LeadExportsController],
-  providers: [ReportsService, LeadExportsService],
+  controllers: [ReportsController, LeadExportsController, ProjectExportsController],
+  providers: [ReportsService, LeadExportsService, ProjectExportsService],
   exports: [ReportsService],
 })
 export class ReportsModule {}

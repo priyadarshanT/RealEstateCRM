@@ -2254,6 +2254,55 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooMany'
+  /leads/project-counts:
+    get:
+      tags:
+      - Leads
+      summary: Lead Count per project, in the user access
+      operationId: countLeadsByProject
+      description: 'Distinct, not deleted leads linked to each project that the user may see.
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - name: projectIds
+        in: query
+        required: true
+        description: Comma-separated project IDs (max 200)
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - projectId
+                      - count
+                      properties:
+                        projectId:
+                          type: string
+                          format: uuid
+                        count:
+                          type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /leads/check-existing:
     get:
       tags:
@@ -5452,6 +5501,51 @@ paths:
         in: query
         schema:
           type: boolean
+      - name: category
+        in: query
+        schema:
+          type: string
+          enum:
+          - residential
+          - commercial
+          - agricultural
+      - name: constructionStatus
+        in: query
+        schema:
+          type: string
+          enum:
+          - off_plan
+          - under_construction
+          - ready
+      - name: assignedUserId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: dateField
+        in: query
+        description: Which date dateFrom / dateTo filter (default created)
+        schema:
+          type: string
+          enum:
+          - created
+          - updated
+          - handover
+      - name: dateFrom
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: dateTo
+        in: query
+        description: The end date is included
+        schema:
+          type: string
+          format: date
+      - name: total
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: OK
@@ -5509,6 +5603,385 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /projects/category-counts:
+    get:
+      tags:
+      - Projects
+      summary: Project counts per category (tabs)
+      operationId: countProjectsByCategory
+      description: 'Residential, Commercial and Agricultural with the same search, dates and filters as the list.
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - name: developerId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: q
+        in: query
+        schema:
+          type: string
+      - name: isActive
+        in: query
+        schema:
+          type: boolean
+      - name: category
+        in: query
+        schema:
+          type: string
+          enum:
+          - residential
+          - commercial
+          - agricultural
+      - name: constructionStatus
+        in: query
+        schema:
+          type: string
+          enum:
+          - off_plan
+          - under_construction
+          - ready
+      - name: assignedUserId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: dateField
+        in: query
+        description: Which date dateFrom / dateTo filter (default created)
+        schema:
+          type: string
+          enum:
+          - created
+          - updated
+          - handover
+      - name: dateFrom
+        in: query
+        schema:
+          type: string
+          format: date
+      - name: dateTo
+        in: query
+        description: The end date is included
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - total
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - category
+                      - count
+                      properties:
+                        category:
+                          type: string
+                        count:
+                          type: integer
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /project-custom-fields:
+    get:
+      tags:
+      - Projects
+      summary: Custom project fields
+      operationId: listProjectCustomFields
+      description: '**Permission:** `leads.view`'
+      x-permission: leads.view
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectCustomField'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    post:
+      tags:
+      - Projects
+      summary: Add a custom project field (Admin)
+      operationId: createProjectCustomField
+      description: '**Permission:** `settings.manage`'
+      x-permission: settings.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCustomFieldInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCustomField'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /project-custom-fields/{id}:
+    patch:
+      tags:
+      - Projects
+      summary: Change a custom project field (Admin)
+      operationId: updateProjectCustomField
+      description: 'The type and key cannot change.
+
+
+        **Permission:** `settings.manage`'
+      x-permission: settings.manage
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCustomFieldInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCustomField'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    delete:
+      tags:
+      - Projects
+      summary: Delete a custom project field (Admin)
+      operationId: deleteProjectCustomField
+      description: '**Permission:** `settings.manage`'
+      x-permission: settings.manage
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /project-exports:
+    post:
+      tags:
+      - Projects
+      summary: Export selected or all filtered projects to Excel
+      operationId: exportProjects
+      description: 'Separate from lead export. Columns in order, custom fields as cf:<key>.
+
+
+        **Permission:** `projects.export`'
+      x-permission: projects.export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - scope
+              - columns
+              properties:
+                scope:
+                  type: string
+                  enum:
+                  - selected
+                  - filtered
+                projectIds:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    type: string
+                    format: uuid
+                filters:
+                  type: object
+                  additionalProperties: true
+                columns:
+                  type: array
+                  minItems: 1
+                  maxItems: 60
+                  items:
+                    type: string
+      responses:
+        '202':
+          description: Export queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadExport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    get:
+      tags:
+      - Projects
+      summary: Project Export Tracker
+      operationId: listProjectExports
+      description: 'Own exports; managers their teams''; Admins all. page.total is the count shown on the Export Tracker
+        button (export jobs, not projects).
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - page
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadExport'
+                  page:
+                    $ref: '#/components/schemas/PageInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /project-exports/{id}/download:
+    post:
+      tags:
+      - Projects
+      summary: Download a ready project export again
+      operationId: downloadProjectExport
+      description: '**Permission:** `projects.export`'
+      x-permission: projects.export
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - url
+                - expiresAt
+                properties:
+                  url:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          description: The file is older than the retention period
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /project-exports/{id}/retry:
+    post:
+      tags:
+      - Projects
+      summary: Retry a failed project export
+      operationId: retryProjectExport
+      description: '**Permission:** `projects.export`'
+      x-permission: projects.export
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '202':
+          description: Export queued again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '429':
           $ref: '#/components/responses/TooMany'
   /projects/{id}:
@@ -13565,11 +14038,116 @@ components:
               type: integer
             sold:
               type: integer
+        category:
+          type: string
+          enum:
+          - residential
+          - commercial
+          - agricultural
+          description: Project page tabs
+        assignedUserId:
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: 'Assigned To: person responsible for the project'
+        customValues:
+          type: object
+          additionalProperties: true
+          description: Custom field values by key (null clears one)
+        startingPrice:
+          readOnly: true
+          description: Lowest price of an available unit
+          oneOf:
+          - type: 'null'
+          - type: object
+            required:
+            - amount
+            - currency
+            properties:
+              amount:
+                type: string
+              currency:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
       required:
       - id
       - developerId
       - name
       - constructionStatus
+    ProjectCustomField:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Key in Project.customValues; column key cf:<key>
+        label:
+          type: string
+        fieldType:
+          type: string
+          enum:
+          - text
+          - number
+          - date
+          - dropdown
+          - checkbox
+        isRequired:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+      required:
+      - id
+      - key
+      - label
+      - fieldType
+      - isRequired
+      - options
+      - sortOrder
+      - isActive
+    ProjectCustomFieldInput:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 80
+        fieldType:
+          type: string
+          enum:
+          - text
+          - number
+          - date
+          - dropdown
+          - checkbox
+        isRequired:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        key:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,40}$
+      description: label and fieldType are required on create; a dropdown needs options.
     Building:
       type: object
       properties:

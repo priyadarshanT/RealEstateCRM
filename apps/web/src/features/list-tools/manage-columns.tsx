@@ -73,7 +73,7 @@ export function ManageColumnsButton({
       rest.splice(Math.max(0, Math.min(to, rest.length)), 0, key);
       return rest;
     });
-  const visible = order.filter((k) => !q.trim() || label.get(k)?.label.toLowerCase().includes(q.trim().toLowerCase()));
+  const visible = order.filter((k) => label.has(k) && (!q.trim() || label.get(k)?.label.toLowerCase().includes(q.trim().toLowerCase())));
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -151,7 +151,7 @@ export function ManageColumnsButton({
                 </Button>
                 <Button
                   disabled={busy}
-                  onClick={() => void run(() => onApply(order.filter((k) => shown.has(k) || label.get(k)?.locked)))}
+                  onClick={() => void run(() => onApply(order.filter((k) => label.has(k) && (shown.has(k) || label.get(k)?.locked))))}
                 >
                   Apply
                 </Button>

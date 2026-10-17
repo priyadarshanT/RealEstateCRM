@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentPrincipal, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
-import { StatusCountList, SecondaryOwnerDto,
+import { ProjectLeadCountList, ProjectLeadCountQuery, StatusCountList, SecondaryOwnerDto,
   ActivityDto,
   ActivityPage,
   AssignDto,
@@ -63,6 +63,15 @@ export class LeadsController {
   @ApiOkResponse({ type: StatusCountList })
   async statusCounts(@CurrentPrincipal() p: Principal, @Query() query: LeadListQuery): Promise<StatusCountList> {
     return { data: await this.leads.statusCounts(p, query) };
+  }
+
+  @Get('project-counts')
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'countLeadsByProject', summary: 'Lead Count per project, in the user access' })
+  @ApiOkResponse({ type: ProjectLeadCountList })
+  async projectCounts(@CurrentPrincipal() p: Principal, @Query() query: ProjectLeadCountQuery): Promise<ProjectLeadCountList> {
+    const counts = await this.leads.projectLeadCounts(p, query.projectIds);
+    return { data: query.projectIds.map((projectId) => ({ projectId, count: counts.get(projectId) ?? 0 })) };
   }
 
   @Get('check-existing')

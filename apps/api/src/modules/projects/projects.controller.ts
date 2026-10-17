@@ -8,6 +8,7 @@ import { parseIfMatch, toEtag } from '../../core/http/etag';
 import { PageQuery } from '../../core/http/pagination';
 import { AttachFileDto, AttachmentDto, AttachmentList } from '../leads/dto/lead.dto';
 import {
+  CategoryCountList,
   BuildingDto,
   BuildingInputDto,
   BuildingList,
@@ -104,6 +105,14 @@ export class ProjectsController {
   @ApiOkResponse({ type: ProjectPage })
   listProjects(@Query() q: ProjectListQuery): Promise<ProjectPage> {
     return this.projects.listProjects(q);
+  }
+
+  @Get('projects/category-counts')
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'countProjectsByCategory', summary: 'Project counts per category (tabs)' })
+  @ApiOkResponse({ type: CategoryCountList })
+  categoryCounts(@Query() q: ProjectListQuery): Promise<CategoryCountList> {
+    return this.projects.categoryCounts(q);
   }
 
   @Post('projects')

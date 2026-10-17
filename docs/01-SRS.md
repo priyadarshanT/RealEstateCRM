@@ -236,6 +236,11 @@ The Team menu has three parts.
 3. Unit status: Available, On Hold, Booked, Sold. Only allowed roles can change status or price.
 4. Price and status changes are kept in history.
 5. A deal links a lead to a unit and holds the offer, meetings, EOI, booking and invoices.
+6. **Project list** (stakeholder update 2026-10-17): tabs All, Residential, Commercial and Agricultural with counts that follow the search, filters and date range. Every project has a Project Type (existing projects are Residential) and an optional Assigned To user.
+7. Toolbar: Search, Manage Columns (saved per user; Project Name always shown), Calendar / Date Range on Created, Updated or Handover Date in the company time zone, Filter (developer, status, assigned user, inactive), Export Projects, Export Tracker and Show Entries (10, 25, 50, 100). Rows can be selected. Default columns: Availability, Project Name, Assigned To, Project Type, Status, Lead Count.
+8. Column meanings: Availability is the available units out of all units; Status is the build status (Off-plan, Under construction, Ready) or Inactive; Lead Count counts only the leads the user may see; Starting Price is the lowest price of an available unit.
+9. **Custom fields** (Admin only): name, type (Text, Number, Date, Dropdown, Checkbox), required, dropdown choices, active. Active fields appear in the project form, Manage Columns and exports; values are checked against the field type. Turning a field off or deleting it keeps the stored values.
+10. **Export Projects** needs its own permission (`projects.export`, Admin by default; lead export does not grant it): Selected Projects or All Filtered Projects, count shown first, Excel with the visible columns in order including custom fields. Project exports have their own Export Tracker like lead exports (§2 item 11c); the button shows the number of export jobs and opens the history.
 
 ## 7. Invoices and purchase orders · Phase 3
 
@@ -258,7 +263,7 @@ The Team menu has three parts.
 6. WhatsApp and email campaigns, integration failures (Phase 2).
 7. Meta check: compares leads in Meta with leads in the CRM and recovers any missing ones (Phase 2).
 8. Sales by project and unit, invoices, payments, balances, commissions, attendance (Phase 3).
-9. Only Admin can export (lead, report and attendance exports). Every export is logged: who, what, filters, when.
+9. Only Admin can export (lead, project, report and attendance exports). Every export is logged: who, what, filters, when.
 10. Large exports run in the background; the user is notified when ready.
 
 ## 9. Attendance · Phase 3

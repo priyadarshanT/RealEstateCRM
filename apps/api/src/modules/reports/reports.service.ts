@@ -31,6 +31,7 @@ import { UnitsService } from '../projects/units.service';
 import { CampaignsService } from '../messaging/campaigns.service';
 import { exportLogs } from './export-logs.schema';
 import { LEAD_LIST_EXPORT, LeadExportsService } from './lead-exports';
+import { PROJECT_LIST_EXPORT, ProjectExportsService } from './project-exports';
 import { ReportColumn, reportDefinitions, ReportDefinition } from './report-definitions';
 
 export { exportLogs };
@@ -129,6 +130,7 @@ export class ReportsService implements OnModuleInit {
     units: UnitsService,
     private readonly leads: LeadsService,
     private readonly leadExports: LeadExportsService,
+    private readonly projectExports: ProjectExportsService,
   ) {
     this.reports = new Map(
       reportDefinitions({ reporting, tasks, marketing, events, labels, campaigns, integrations, phase3: { deals, documents, commissions, counterparties, attendance, projects, units } }).map((r) => [r.key, r]),
@@ -218,6 +220,10 @@ export class ReportsService implements OnModuleInit {
       }
       if (row.reportKey === LEAD_LIST_EXPORT) {
         await this.leadExports.build(row, { ...job, roleKey: job.roleKey ?? '' });
+        return;
+      }
+      if (row.reportKey === PROJECT_LIST_EXPORT) {
+        await this.projectExports.build(row, { ...job, roleKey: job.roleKey ?? '' });
         return;
       }
       const report = this.find(row.reportKey);

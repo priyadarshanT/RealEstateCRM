@@ -28,7 +28,7 @@ export class SaveListColumnsDto {
   @ArrayMinSize(1)
   @ArrayMaxSize(60)
   @ArrayUnique()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9_]{0,59}$/, { each: true })
+  @Matches(/^(cf:)?[a-zA-Z][a-zA-Z0-9_]{0,59}$/, { each: true })
   columns!: string[];
 }
 

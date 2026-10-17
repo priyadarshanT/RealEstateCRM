@@ -1,14 +1,17 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { and, asc, eq, ilike, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, ilike, inArray, lt, or, sql, SQL } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { DbService } from '../../core/database/db.service';
 import { isStillReferenced, pgCode, PG_FOREIGN_KEY_VIOLATION, PG_UNIQUE_VIOLATION } from '../../core/errors/pg';
 import { ProblemException, Problems } from '../../core/errors/problem';
 import { versionConflict } from '../../core/http/etag';
-import { decodeCursor, Page, toPage } from '../../core/http/pagination';
+import { dayAfter, dayStart, zonedDayAfter, zonedDayStart } from '../../core/http/dates';
+import { decodeCursor, encodeCursor, Page, toPage } from '../../core/http/pagination';
 import { RequestContext } from '../../core/http/request-context';
 import { FilesService } from '../../core/files/files.service';
 import { normalizePhone } from '../leads/lead-intake.service';
+import { OrganizationService } from '../organization/organization.service';
+import { CustomFieldsService } from './custom-fields';
 import {
   BuildingInputDto,
   DeveloperDto,
@@ -17,8 +20,11 @@ import {
   ProjectDto,
   ProjectInputDto,
   ProjectListQuery,
+  CategoryCountList,
+  ProjectPage,
+  StartingPriceDto,
 } from './dto/projects.dto';
-import { BuildingRow, buildings, DeveloperRow, developers, ProjectRow, projects, units } from './projects.schema';
+import { BuildingRow, buildings, DeveloperRow, developers, PROJECT_CATEGORIES, ProjectRow, projects, units } from './projects.schema';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -32,6 +38,8 @@ export class ProjectsService implements OnModuleInit {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly files: FilesService,
+    private readonly organization: OrganizationService,
+    private readonly customFields: CustomFieldsService,
   ) {}
 
   onModuleInit(): void {
@@ -86,23 +94,83 @@ export class ProjectsService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------- projects
-  async listProjects(q: ProjectListQuery): Promise<Page<ProjectDto>> {
-    const after = q.cursor ? (([name, id]) => sql`(${projects.name}, ${projects.id}) > (${name}, ${id}::uuid)`)(decodeCursor(q.cursor, 2) as [string, string]) : undefined;
+  /**
+   * Project list (Project page): search, developer, category tab, status, Assigned To and a date range on
+   * Created, Updated or Handover date (company time zone, end date included); `total` for Show Entries.
+   */
+  async listProjects(q: ProjectListQuery): Promise<ProjectPage> {
+    const where = and(...(await this.conditions(q)), q.category ? eq(projects.category, q.category) : undefined);
+    const offset = q.cursor ? Number(decodeCursor(q.cursor, 1)[0]) : 0;
+    const rows = await this.db.current.select().from(projects).where(where).orderBy(asc(projects.name), asc(projects.id)).limit(q.limit + 1).offset(offset);
+    const kept = rows.slice(0, q.limit);
+    const [inventory, prices] = await Promise.all([this.inventory(kept.map((r) => r.id)), this.startingPrices(kept.map((r) => r.id))]);
+    const hasMore = rows.length > q.limit;
+    const total = q.total ? (await this.db.current.select({ n: sql<number>`count(*)::int` }).from(projects).where(where))[0]?.n : undefined;
+    return {
+      data: kept.map((r) => ProjectDto.from(r, inventory.get(r.id) ?? emptyInventory(), prices.get(r.id) ?? null)),
+      page: { nextCursor: hasMore ? encodeCursor([offset + q.limit]) : null, hasMore, ...(total !== undefined ? { total } : {}) },
+    };
+  }
+
+  /** Category tabs with counts (zeros included); they follow the same search, dates and filters as the list. */
+  async categoryCounts(q: ProjectListQuery): Promise<CategoryCountList> {
     const rows = await this.db.current
-      .select()
+      .select({ category: projects.category, n: sql<number>`count(*)::int` })
       .from(projects)
-      .where(
-        and(
-          after,
-          q.developerId ? eq(projects.developerId, q.developerId) : undefined,
-          q.isActive !== undefined ? eq(projects.isActive, q.isActive) : undefined,
-          q.q ? ilike(projects.name, `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`) : undefined,
-        ),
-      )
-      .orderBy(asc(projects.name), asc(projects.id))
-      .limit(q.limit + 1);
-    const inventory = await this.inventory(rows.slice(0, q.limit).map((r) => r.id));
-    return toPage(rows, q.limit, (r) => [r.name, r.id], (r) => ProjectDto.from(r, inventory.get(r.id) ?? emptyInventory()));
+      .where(and(...(await this.conditions(q))))
+      .groupBy(projects.category);
+    const of = new Map(rows.map((r) => [r.category, r.n]));
+    const data = PROJECT_CATEGORIES.map((category) => ({ category, count: of.get(category) ?? 0 }));
+    return { data, total: data.reduce((n, c) => n + c.count, 0) };
+  }
+
+  /** One page of projects for an export (worker): the filters, or the chosen project IDs. */
+  async exportRows(q: ProjectListQuery & { projectIds?: string[] }, limit: number, offset: number): Promise<ProjectDto[]> {
+    const where = and(
+      ...(await this.conditions(q)),
+      q.category ? eq(projects.category, q.category) : undefined,
+      q.projectIds ? inArray(projects.id, q.projectIds.length ? q.projectIds : ['00000000-0000-0000-0000-000000000000']) : undefined,
+    );
+    const rows = await this.db.current.select().from(projects).where(where).orderBy(asc(projects.name), asc(projects.id)).limit(limit).offset(offset);
+    const [inventory, prices] = await Promise.all([this.inventory(rows.map((r) => r.id)), this.startingPrices(rows.map((r) => r.id))]);
+    return rows.map((r) => ProjectDto.from(r, inventory.get(r.id) ?? emptyInventory(), prices.get(r.id) ?? null));
+  }
+
+  private async conditions(q: ProjectListQuery): Promise<(SQL | undefined)[]> {
+    const c: (SQL | undefined)[] = [
+      q.developerId ? eq(projects.developerId, q.developerId) : undefined,
+      q.isActive !== undefined ? eq(projects.isActive, q.isActive) : undefined,
+      q.constructionStatus ? eq(projects.constructionStatus, q.constructionStatus) : undefined,
+      q.assignedUserId ? eq(projects.assignedUserId, q.assignedUserId) : undefined,
+    ];
+    if (q.q) {
+      const like = `%${q.q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      c.push(or(ilike(projects.name, like), ilike(projects.community, like), ilike(projects.city, like)));
+    }
+    if (q.dateFrom || q.dateTo) {
+      if (q.dateField === 'handover') {
+        // A date only: compared as calendar days.
+        if (q.dateFrom) c.push(gte(projects.handoverDate, q.dateFrom));
+        if (q.dateTo) c.push(sql`${projects.handoverDate} <= ${q.dateTo}`);
+      } else {
+        const tz = (await this.organization.getProfile(this.db.currentTenantId!)).timezone ?? 'Asia/Dubai';
+        const column = q.dateField === 'updated' ? projects.updatedAt : projects.createdAt;
+        if (q.dateFrom) c.push(sql`${column} >= ${zonedDayStart(q.dateFrom, tz)}`);
+        if (q.dateTo) c.push(sql`${column} < ${zonedDayAfter(q.dateTo, tz)}`);
+      }
+    }
+    return c;
+  }
+
+  /** Starting Price: the lowest price of an available unit of each project. */
+  private async startingPrices(projectIds: string[]): Promise<Map<string, StartingPriceDto>> {
+    if (!projectIds.length) return new Map();
+    const rows = await this.db.current
+      .selectDistinctOn([units.projectId], { projectId: units.projectId, price: units.price, currency: units.currency })
+      .from(units)
+      .where(and(inArray(units.projectId, projectIds), eq(units.status, 'available')))
+      .orderBy(units.projectId, asc(units.price));
+    return new Map(rows.map((r) => [r.projectId, { amount: Number(r.price).toFixed(2), currency: r.currency }]));
   }
 
   async getProject(id: string): Promise<ProjectRow> {
@@ -112,13 +180,20 @@ export class ProjectsService implements OnModuleInit {
   }
 
   async projectDto(row: ProjectRow): Promise<ProjectDto> {
-    return ProjectDto.from(row, (await this.inventory([row.id])).get(row.id) ?? emptyInventory());
+    return ProjectDto.from(row, (await this.inventory([row.id])).get(row.id) ?? emptyInventory(), (await this.startingPrices([row.id])).get(row.id) ?? null);
   }
 
   /** Project IDs by name, ignoring case (lead migration maps a "Project" column). */
   async idsByName(): Promise<Map<string, string>> {
     const rows = await this.db.current.select({ id: projects.id, name: projects.name }).from(projects);
     return new Map(rows.map((r) => [r.name.trim().toLowerCase(), r.id]));
+  }
+
+  /** Developer names by ID (project exports). */
+  async developerNames(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db.current.select({ id: developers.id, name: developers.name }).from(developers).where(inArray(developers.id, ids));
+    return new Map(rows.map((r) => [r.id, r.name]));
   }
 
   /** Project names by ID (labels in other modules, e.g. reports). */
@@ -134,9 +209,10 @@ export class ProjectsService implements OnModuleInit {
     await this.getDeveloper(body.developerId!).catch(() => {
       throw Problems.validation([{ field: 'developerId', message: 'developer not found' }]);
     });
+    const customValues = await this.customFields.check(body.customValues ?? {}, null);
     const [row] = await this.db.current
       .insert(projects)
-      .values({ tenantId: this.db.currentTenantId!, developerId: body.developerId!, name: body.name!.trim(), ...projectFields(body) })
+      .values({ tenantId: this.db.currentTenantId!, developerId: body.developerId!, name: body.name!.trim(), ...projectFields(body), customValues })
       .returning()
       .catch(rethrow('project'));
     await this.audit.record('create', 'projects', row!.id, { name: [null, row!.name], developerId: [null, row!.developerId] });
@@ -150,9 +226,10 @@ export class ProjectsService implements OnModuleInit {
         throw Problems.validation([{ field: 'developerId', message: 'developer not found' }]);
       });
     }
+    const customValues = body.customValues !== undefined ? await this.customFields.check(body.customValues, before.customValues ?? {}) : undefined;
     const [after] = await this.db.current
       .update(projects)
-      .set({ ...(body.developerId ? { developerId: body.developerId } : {}), ...(body.name !== undefined ? { name: body.name.trim() } : {}), ...projectFields(body) })
+      .set({ ...(body.developerId ? { developerId: body.developerId } : {}), ...(body.name !== undefined ? { name: body.name.trim() } : {}), ...projectFields(body), ...(customValues ? { customValues } : {}) })
       .where(and(eq(projects.id, id), expectedVersion ? eq(projects.updatedAt, expectedVersion) : undefined))
       .returning()
       .catch(rethrow('project'));
@@ -265,6 +342,8 @@ function projectFields(body: ProjectInputDto) {
     ...(body.paymentPlan !== undefined ? { paymentPlan: body.paymentPlan } : {}),
     ...(body.brochureFileId !== undefined ? { brochureFileId: body.brochureFileId } : {}),
     ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+    ...(body.category !== undefined ? { category: body.category } : {}),
+    ...(body.assignedUserId !== undefined ? { assignedUserId: body.assignedUserId } : {}),
   };
 }
 
@@ -273,7 +352,7 @@ function developerView(d: DeveloperRow) {
 }
 
 function projectView(p: ProjectRow) {
-  return { developerId: p.developerId, name: p.name, community: p.community, city: p.city, constructionStatus: p.constructionStatus, handoverDate: p.handoverDate, paymentPlan: p.paymentPlan, isActive: p.isActive };
+  return { developerId: p.developerId, name: p.name, community: p.community, city: p.city, constructionStatus: p.constructionStatus, handoverDate: p.handoverDate, paymentPlan: p.paymentPlan, isActive: p.isActive, category: p.category, assignedUserId: p.assignedUserId, customValues: p.customValues };
 }
 
 /** Database refusals as API answers: duplicate names, records still in use, unknown files. */
@@ -281,7 +360,7 @@ export function rethrow(what: string) {
   return (err: unknown): never => {
     if (pgCode(err) === PG_UNIQUE_VIOLATION) throw new ProblemException(409, 'CONFLICT', 'Already exists', `A ${what} with this name already exists.`);
     if (isStillReferenced(err)) throw new ProblemException(409, 'CONFLICT', 'In use', `This ${what} is still used by other records.`);
-    if (pgCode(err) === PG_FOREIGN_KEY_VIOLATION) throw Problems.validation([{ field: 'fileId', message: 'linked record or file not found' }]);
+    if (pgCode(err) === PG_FOREIGN_KEY_VIOLATION) throw Problems.validation([{ field: 'id', message: 'a linked record, user or file was not found' }]);
     throw err;
   };
 }

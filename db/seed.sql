@@ -19,6 +19,7 @@ INSERT INTO permissions (key, module, description) VALUES
  ('campaigns.create','messaging','Create bulk campaigns'),
  ('campaigns.approve','messaging','Approve bulk campaigns'),
  ('projects.manage','projects','Create and edit developers, projects, buildings and units'),
+ ('projects.export','projects','Export projects to Excel (separate from lead export)'),
  ('units.change_status','projects','Change unit status and price'),
  ('finance.create','finance','Create invoices and purchase orders'),
  ('finance.approve','finance','Approve and cancel invoices and purchase orders'),
@@ -94,7 +95,7 @@ BEGIN
    ('sales_manager','leads.view'),('sales_manager','leads.create'),('sales_manager','leads.edit'),('sales_manager','leads.delete'),('sales_manager','leads.assign'),('sales_manager','leads.share'),('sales_manager','leads.import'),('sales_manager','messages.send'),('sales_manager','campaigns.create'),('sales_manager','units.change_status'),('sales_manager','attendance.view'),('sales_manager','attendance.approve'),
    ('team_leader','leads.view'),('team_leader','leads.create'),('team_leader','leads.edit'),('team_leader','leads.assign'),('team_leader','leads.share'),('team_leader','messages.send'),('team_leader','attendance.view'),('team_leader','attendance.approve'),
    ('sales_agent','leads.view'),('sales_agent','leads.create'),('sales_agent','leads.edit'),('sales_agent','leads.share'),('sales_agent','messages.send'),('sales_agent','attendance.view'),
-   ('admin','leads.view'),('admin','leads.create'),('admin','leads.edit'),('admin','leads.delete'),('admin','leads.assign'),('admin','leads.share'),('admin','leads.import'),('admin','leads.export'),('admin','reports.export'),('admin','attendance.export'),('admin','projects.manage'),('admin','units.change_status'),('admin','attendance.view'),('admin','attendance.approve'),('admin','users.manage'),('admin','users.lead_assignment'),('admin','settings.manage'),('admin','audit.view'),('admin','billing.view'),('admin','billing.manage'),
+   ('admin','leads.view'),('admin','leads.create'),('admin','leads.edit'),('admin','leads.delete'),('admin','leads.assign'),('admin','leads.share'),('admin','leads.import'),('admin','leads.export'),('admin','reports.export'),('admin','attendance.export'),('admin','projects.manage'),('admin','projects.export'),('admin','units.change_status'),('admin','attendance.view'),('admin','attendance.approve'),('admin','users.manage'),('admin','users.lead_assignment'),('admin','settings.manage'),('admin','audit.view'),('admin','billing.view'),('admin','billing.manage'),
    ('finance','finance.create'),('finance','finance.approve')
   ) AS g(role_key, perm) ON g.role_key = r.key JOIN permissions p ON p.key = g.perm
   WHERE r.tenant_id = p_tenant;

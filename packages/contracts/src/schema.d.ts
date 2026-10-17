@@ -774,6 +774,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leads/project-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lead Count per project, in the user access
+         * @description Distinct, not deleted leads linked to each project that the user may see.
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["countLeadsByProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leads/check-existing": {
         parameters: {
             query?: never;
@@ -2200,6 +2222,146 @@ export interface paths {
          * @description **Permission:** `projects.manage`
          */
         post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/category-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project counts per category (tabs)
+         * @description Residential, Commercial and Agricultural with the same search, dates and filters as the list.
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["countProjectsByCategory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Custom project fields
+         * @description **Permission:** `leads.view`
+         */
+        get: operations["listProjectCustomFields"];
+        put?: never;
+        /**
+         * Add a custom project field (Admin)
+         * @description **Permission:** `settings.manage`
+         */
+        post: operations["createProjectCustomField"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-custom-fields/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom project field (Admin)
+         * @description **Permission:** `settings.manage`
+         */
+        delete: operations["deleteProjectCustomField"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a custom project field (Admin)
+         * @description The type and key cannot change.
+         *
+         *     **Permission:** `settings.manage`
+         */
+        patch: operations["updateProjectCustomField"];
+        trace?: never;
+    };
+    "/project-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Export Tracker
+         * @description Own exports; managers their teams'; Admins all. page.total is the count shown on the Export Tracker button (export jobs, not projects).
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["listProjectExports"];
+        put?: never;
+        /**
+         * Export selected or all filtered projects to Excel
+         * @description Separate from lead export. Columns in order, custom fields as cf:<key>.
+         *
+         *     **Permission:** `projects.export`
+         */
+        post: operations["exportProjects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-exports/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download a ready project export again
+         * @description **Permission:** `projects.export`
+         */
+        post: operations["downloadProjectExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-exports/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed project export
+         * @description **Permission:** `projects.export`
+         */
+        post: operations["retryProjectExport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5869,6 +6031,50 @@ export interface components {
                 booked?: number;
                 sold?: number;
             };
+            /**
+             * @description Project page tabs
+             * @enum {string}
+             */
+            category?: "residential" | "commercial" | "agricultural";
+            /** @description Assigned To: person responsible for the project */
+            assignedUserId?: string | null;
+            /** @description Custom field values by key (null clears one) */
+            customValues?: {
+                [key: string]: unknown;
+            };
+            /** @description Lowest price of an available unit */
+            readonly startingPrice?: null | {
+                amount: string;
+                currency: string;
+            };
+            /** Format: date-time */
+            readonly createdAt?: string;
+            /** Format: date-time */
+            readonly updatedAt?: string;
+        };
+        ProjectCustomField: {
+            /** Format: uuid */
+            id: string;
+            /** @description Key in Project.customValues; column key cf:<key> */
+            key: string;
+            label: string;
+            /** @enum {string} */
+            fieldType: "text" | "number" | "date" | "dropdown" | "checkbox";
+            isRequired: boolean;
+            options: string[];
+            sortOrder: number;
+            isActive: boolean;
+        };
+        /** @description label and fieldType are required on create; a dropdown needs options. */
+        ProjectCustomFieldInput: {
+            label?: string;
+            /** @enum {string} */
+            fieldType?: "text" | "number" | "date" | "dropdown" | "checkbox";
+            isRequired?: boolean;
+            options?: string[];
+            sortOrder?: number;
+            isActive?: boolean;
+            key?: string;
         };
         Building: {
             /** Format: uuid */
@@ -8646,6 +8852,39 @@ export interface operations {
                             /** Format: uuid */
                             stageId: string;
                             key: string;
+                            count: number;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    countLeadsByProject: {
+        parameters: {
+            query: {
+                /** @description Comma-separated project IDs (max 200) */
+                projectIds: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** Format: uuid */
+                            projectId: string;
                             count: number;
                         }[];
                     };
@@ -11453,6 +11692,15 @@ export interface operations {
                 developerId?: string;
                 q?: string;
                 isActive?: boolean;
+                category?: "residential" | "commercial" | "agricultural";
+                constructionStatus?: "off_plan" | "under_construction" | "ready";
+                assignedUserId?: string;
+                /** @description Which date dateFrom / dateTo filter (default created) */
+                dateField?: "created" | "updated" | "handover";
+                dateFrom?: string;
+                /** @description The end date is included */
+                dateTo?: string;
+                total?: boolean;
             };
             header?: never;
             path?: never;
@@ -11508,6 +11756,292 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    countProjectsByCategory: {
+        parameters: {
+            query?: {
+                developerId?: string;
+                q?: string;
+                isActive?: boolean;
+                category?: "residential" | "commercial" | "agricultural";
+                constructionStatus?: "off_plan" | "under_construction" | "ready";
+                assignedUserId?: string;
+                /** @description Which date dateFrom / dateTo filter (default created) */
+                dateField?: "created" | "updated" | "handover";
+                dateFrom?: string;
+                /** @description The end date is included */
+                dateTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            category: string;
+                            count: number;
+                        }[];
+                        total: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listProjectCustomFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ProjectCustomField"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    createProjectCustomField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCustomFieldInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectCustomField"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    deleteProjectCustomField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    updateProjectCustomField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCustomFieldInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectCustomField"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listProjectExports: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from page.nextCursor */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadExport"][];
+                        page: components["schemas"]["PageInfo"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    exportProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    scope: "selected" | "filtered";
+                    projectIds?: string[];
+                    filters?: {
+                        [key: string]: unknown;
+                    };
+                    columns: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Export queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadExport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    downloadProjectExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description The file is older than the retention period */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["TooMany"];
+        };
+    };
+    retryProjectExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export queued again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadExport"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["TooMany"];
         };
     };

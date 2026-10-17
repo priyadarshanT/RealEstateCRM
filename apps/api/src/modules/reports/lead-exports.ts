@@ -36,12 +36,15 @@ export const LEAD_EXPORT_COLUMNS: Record<string, string> = {
   phone: 'Phone',
   email: 'Email',
   country: 'Country',
+  city: 'City',
   project: 'Project',
   source: 'Source',
   campaign: 'Campaign',
   agent: 'Assigned To',
   secondaryOwner: 'Secondary Owner',
   assignedFrom: 'Assigned From',
+  reassignedBy: 'Reassigned By',
+  reassignedAt: 'Reassigned At',
   priority: 'Priority',
   score: 'Score',
   stage: 'Status',
@@ -213,7 +216,7 @@ export class LeadExportsService {
     const [sources, campaigns, users, stages, substatuses, projectNames, tz] = await Promise.all([
       this.labels.sources(dtos.map((l) => l.sourceId)),
       this.labels.campaigns(dtos.map((l) => l.campaignId ?? '')),
-      this.labels.users(dtos.flatMap((l) => [l.ownerUserId ?? '', l.secondaryOwnerUserId ?? '']).concat(items.map((i) => i.assignedFrom?.changedBy ?? ''))),
+      this.labels.users(dtos.flatMap((l) => [l.ownerUserId ?? '', l.secondaryOwnerUserId ?? '']).concat(items.flatMap((i) => [i.lastAssignment?.fromUserId ?? '', i.lastAssignment?.changedBy ?? '']))),
       this.labels.stages(dtos.map((l) => l.stageId)),
       this.labels.substatuses(dtos.map((l) => l.substatusId ?? '')),
       this.projects.names([...new Set(dtos.flatMap((l) => l.projectIds ?? []))]),
@@ -227,12 +230,15 @@ export class LeadExportsService {
         case 'phone': return l.phonePrimary ?? '';
         case 'email': return l.email ?? '';
         case 'country': return l.countryCode ?? '';
+        case 'city': return l.city ?? '';
         case 'project': return (l.projectIds ?? []).map((id) => projectNames.get(id) ?? '').filter(Boolean).join(', ');
         case 'source': return sources.get(l.sourceId) ?? '';
         case 'campaign': return l.campaignId ? (campaigns.get(l.campaignId) ?? '') : '';
         case 'agent': return l.ownerUserId ? (users.get(l.ownerUserId) ?? '') : 'Unassigned';
         case 'secondaryOwner': return l.secondaryOwnerUserId ? (users.get(l.secondaryOwnerUserId) ?? '') : '';
-        case 'assignedFrom': return i.assignedFrom ? (i.assignedFrom.changedBy ? (users.get(i.assignedFrom.changedBy) ?? '') : `System (${i.assignedFrom.method.replace(/_/g, ' ')})`) : '';
+        case 'assignedFrom': return i.lastAssignment ? (i.lastAssignment.fromUserId ? (users.get(i.lastAssignment.fromUserId) ?? '') : 'Unassigned') : '';
+        case 'reassignedBy': return i.lastAssignment ? (i.lastAssignment.changedBy ? (users.get(i.lastAssignment.changedBy) ?? '') : `System (${i.lastAssignment.method.replace(/_/g, ' ')})`) : '';
+        case 'reassignedAt': return when(i.lastAssignment?.changedAt.toISOString());
         case 'priority': return l.priority ?? '';
         case 'score': return l.score;
         case 'stage': return stages.get(l.stageId) ?? '';

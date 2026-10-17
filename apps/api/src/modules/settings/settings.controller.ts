@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Headers, Param, Put, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { RequirePermission } from '../../core/auth/decorators';
+import { RequireAnyPermission, RequirePermission } from '../../core/auth/decorators';
 import { parseIfMatch } from '../../core/http/etag';
 import { ClientPolicyDto, CurrencyCodes, CurrencyList, SetCurrenciesDto, SettingChangeList, SettingDto, SettingList, UpdateSettingDto } from './dto/settings.dto';
 import { SettingsService } from './settings.service';
@@ -13,7 +13,7 @@ export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
   @Get('settings')
-  @RequirePermission('settings.manage')
+  @RequireAnyPermission('settings.view', 'settings.manage')
   @ApiOperation({ operationId: 'listSettings', summary: 'List settings' })
   @ApiOkResponse({ type: SettingList })
   async list(): Promise<SettingList> {
@@ -21,7 +21,7 @@ export class SettingsController {
   }
 
   @Get('settings/:key')
-  @RequirePermission('settings.manage')
+  @RequireAnyPermission('settings.view', 'settings.manage')
   @ApiOperation({ operationId: 'getSetting', summary: 'Get a setting' })
   @ApiOkResponse({ type: SettingDto })
   async get(@Param('key') key: string, @Res({ passthrough: true }) res: Response): Promise<SettingDto> {

@@ -103,7 +103,10 @@ describe('Meta lead ads', () => {
     const stored = await ownerQuery<{ secret_ref: string }>(`SELECT secret_ref FROM integrations WHERE id = $1`, [integrationId]);
     expect(stored[0]!.secret_ref).toMatch(new RegExp(`/tenants/${TENANT_B}/integrations/${integrationId}$`));
     expect((await admin.post(`/api/v1/integrations/${integrationId}/test`).expect(200)).body.ok).toBe(true);
-    await agent.get('/api/v1/integrations').expect(403);
+    // An agent (another company here) may view their own company's connections, never this one, and change none.
+    const seen = (await agent.get('/api/v1/integrations').expect(200)).body.data.map((i: { id: string }) => i.id);
+    expect(seen).not.toContain(integrationId);
+    await agent.patch(`/api/v1/integrations/${integrationId}`).send({ accountLabel: 'x' }).expect(403);
   });
 
   it('Meta verifies the webhook with the verify token', async () => {

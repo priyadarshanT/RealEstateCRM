@@ -16,6 +16,7 @@ export interface IntakeInput {
   phoneAlternate?: string | null;
   email?: string | null;
   countryCode?: string | null;
+  city?: string | null;
   preferredLanguage?: string | null;
   budgetMin?: string | null;
   budgetMax?: string | null;
@@ -116,6 +117,7 @@ export class LeadIntakeService {
       phoneAlternate: phoneAlternate && phoneAlternate !== phone ? phoneAlternate : null,
       email,
       countryCode: input.countryCode ?? null,
+      city: cleanCity(input.city),
       preferredLanguage: input.preferredLanguage ?? null,
       budgetMin: input.budgetMin ?? null,
       budgetMax: input.budgetMax ?? null,
@@ -155,6 +157,7 @@ export class LeadIntakeService {
     if (clean.email && clean.email !== lead.email && !(await this.repo.findExisting([], clean.email, lead.id))) patch.email = clean.email;
     if (clean.phoneAlternate && clean.phoneAlternate !== lead.phonePrimary) patch.phoneAlternate = clean.phoneAlternate;
     if (input.countryCode) patch.countryCode = input.countryCode;
+    if (cleanCity(input.city)) patch.city = cleanCity(input.city);
     if (input.preferredLanguage) patch.preferredLanguage = input.preferredLanguage;
     if (input.budgetMin || input.budgetMax) {
       patch.budgetMin = input.budgetMin ?? null;
@@ -250,6 +253,7 @@ function pickChanged(l: LeadRow) {
     email: l.email,
     phoneAlternate: l.phoneAlternate,
     countryCode: l.countryCode,
+    city: l.city,
     preferredLanguage: l.preferredLanguage,
     budgetMin: l.budgetMin,
     budgetMax: l.budgetMax,
@@ -257,4 +261,9 @@ function pickChanged(l: LeadRow) {
     stageId: l.stageId,
     substatusId: l.substatusId,
   };
+}
+
+/** City as free text: trimmed, at most 100 characters; empty means not given. */
+function cleanCity(city: string | null | undefined): string | null {
+  return city?.trim().slice(0, 100).trim() || null;
 }

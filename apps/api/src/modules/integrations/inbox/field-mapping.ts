@@ -11,6 +11,7 @@ export const CRM_FIELDS = [
   'email',
   'preferredLanguage',
   'countryCode',
+  'city',
   'budgetMin',
   'budgetMax',
   'budgetCurrency',
@@ -32,6 +33,7 @@ const DEFAULT_NAMES: Partial<Record<CrmField, string[]>> = {
   phoneAlternate: ['alternate_phone', 'phone2', 'second_phone'],
   email: ['email', 'email_address', 'e_mail'],
   preferredLanguage: ['language', 'preferred_language'],
+  city: ['city', 'city_name', 'town'],
   budgetMin: ['budget_min', 'min_budget', 'budget'],
   budgetMax: ['budget_max', 'max_budget'],
   budgetCurrency: ['currency', 'budget_currency'],
@@ -49,6 +51,7 @@ export interface MappedLead {
   email: string | null;
   preferredLanguage: string | null;
   countryCode: string | null;
+  city: string | null;
   budgetMin: string | null;
   budgetMax: string | null;
   budgetCurrency: string | null;
@@ -103,6 +106,7 @@ export function mapFields(payload: Record<string, unknown>, mapping: FieldMappin
     email: pick('email'),
     preferredLanguage: pick('preferredLanguage'),
     countryCode: pick('countryCode'),
+    city: pick('city'),
     budgetMin: numeric(pick('budgetMin')),
     budgetMax: numeric(pick('budgetMax')),
     budgetCurrency: pick('budgetCurrency')?.toUpperCase().slice(0, 3) ?? null,

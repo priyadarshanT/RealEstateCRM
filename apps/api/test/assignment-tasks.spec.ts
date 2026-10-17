@@ -89,7 +89,9 @@ describe('assignment, rotation, tasks, notifications', () => {
       expect((await admin.get('/api/v1/assignment-rules').expect(200)).body.data[0].name).toBe('Meta to B Sales');
 
       await admin.patch(`/api/v1/assignment-rules/${arabic.body.id}`).send({ isActive: false }).expect(200);
-      await agents[0]!.client.get('/api/v1/assignment-rules').expect(403);
+      // Everyone can view the rotation rules (Global Configuration is view-only); only the Admin changes them.
+      await agents[0]!.client.get('/api/v1/assignment-rules').expect(200);
+      await agents[0]!.client.patch(`/api/v1/assignment-rules/${arabic.body.id}`).send({ isActive: true }).expect(403);
     });
   });
 

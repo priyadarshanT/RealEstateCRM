@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiProperty, ApiPropertyOptional, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { Response } from 'express';
-import { CurrentPrincipal, Public, RequirePermission } from '../../core/auth/decorators';
+import { CurrentPrincipal, Public, RequireAnyPermission, RequirePermission } from '../../core/auth/decorators';
 import { Principal } from '../../core/auth/principal';
 import { PageQuery } from '../../core/http/pagination';
 import {
@@ -37,7 +37,7 @@ export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
   @Get('integrations')
-  @RequirePermission('settings.manage')
+  @RequireAnyPermission('settings.view', 'settings.manage')
   @ApiOperation({ operationId: 'listIntegrations', summary: 'List connections' })
   @ApiOkResponse({ type: IntegrationList })
   async list(@CurrentPrincipal() p: Principal): Promise<IntegrationList> {
@@ -53,7 +53,7 @@ export class IntegrationsController {
   }
 
   @Get('integrations/:id')
-  @RequirePermission('settings.manage')
+  @RequireAnyPermission('settings.view', 'settings.manage')
   @ApiOperation({ operationId: 'getIntegration', summary: 'Get a connection' })
   @ApiOkResponse({ type: IntegrationDto })
   get(@Param('id', ParseUUIDPipe) id: string): Promise<IntegrationDto> {

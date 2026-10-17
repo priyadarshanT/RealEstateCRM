@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileUp, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 import { api, ApiError, errorMessage, unwrap } from '@/core/api';
+import { useCan } from '@/core/session';
 import { openDownload } from '@/core/files';
 import { formatDateTime } from '@/core/format';
 import { ImportDialog } from '@/features/leads/import-dialog';
@@ -42,9 +43,11 @@ export function MigrationPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const can = useCan();
   const batches = useQuery({
     queryKey: ['lead-imports'],
     queryFn: async () => unwrap(await api.GET('/leads/imports')).data,
+    enabled: can('leads.import'),
     refetchInterval: (q) => (q.state.data?.some((b) => b.status === 'importing') ? 3000 : false),
   });
   const retry = useMutation({

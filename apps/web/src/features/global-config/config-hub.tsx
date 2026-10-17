@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { COMMUNICATION, HUB_TABS, MODULES } from './catalog';
 import { IntegrationsSection } from './integrations-section';
+import { EditGate, useCanEditConfig, ViewOnlyNotice } from './ui';
 
 /**
  * Global Configuration (replaces Settings & Integrations, stakeholder update 2026-10-17): Module Settings,
@@ -17,6 +18,7 @@ export function ConfigHub() {
   const router = useRouter();
   const params = useSearchParams();
   const tab = HUB_TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as (typeof HUB_TABS)[number]['key']) : 'modules';
+  const canEdit = useCanEditConfig();
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -29,6 +31,8 @@ export function ConfigHub() {
           <p className="text-sm text-muted-foreground">Company-wide settings, integrations and communication. Only the Admin can change them.</p>
         </div>
       </div>
+
+      {canEdit ? null : <ViewOnlyNotice />}
 
       <div role="tablist" className="flex gap-1 border-b border-border">
         {HUB_TABS.map((t) => (
@@ -55,7 +59,11 @@ export function ConfigHub() {
           ))}
         </div>
       ) : null}
-      {tab === 'integrations' ? <IntegrationsSection /> : null}
+      {tab === 'integrations' ? (
+        <EditGate>
+          <IntegrationsSection />
+        </EditGate>
+      ) : null}
       {tab === 'communication' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {COMMUNICATION.map((c) => (

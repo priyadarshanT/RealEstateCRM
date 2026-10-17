@@ -3,6 +3,7 @@
 import { Loading } from '@crm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/core/api';
+import { useCan } from '@/core/session';
 import { AssignmentTab } from './assignment-tab';
 import { LeadRules } from './lead-rules';
 import { ReasonsCard } from './sources-reasons';
@@ -27,7 +28,9 @@ type Features = {
  */
 export function LeadsPage() {
   const s = useSettingDraft<Features>('leads.features');
-  const roles = useQuery({ queryKey: ['roles'], queryFn: async () => unwrap(await api.GET('/roles')).data });
+  const can = useCan();
+  // Role names for Hide Lead Contact Info; only users who manage roles can list them.
+  const roles = useQuery({ queryKey: ['roles'], queryFn: async () => unwrap(await api.GET('/roles')).data, enabled: can('users.manage') });
   const d = s.draft;
 
   return (

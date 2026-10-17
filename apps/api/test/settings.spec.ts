@@ -28,7 +28,9 @@ describe('settings module', () => {
       expect(byKey['leads.response_time']).toBeUndefined();
       expect(byKey['leads.features']).toMatchObject({ rotation: true });
       expect(byKey['leads.scoring']).toEqual({ budget_fit: 30, project_match: 20, source_quality: 20, engagement: 30 });
-      await agent.get('/api/v1/settings').expect(403);
+      // Everyone can view Global Configuration; only the Admin changes it.
+      await agent.get('/api/v1/settings').expect(200);
+      await agent.put('/api/v1/settings/leads.scoring').send({ value: { budget_fit: 25, project_match: 25, source_quality: 25, engagement: 25 } }).expect(403);
     });
 
     it('Admin changes the scoring weights; invalid values and unknown keys are refused', async () => {

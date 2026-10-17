@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, ApiError, errorMessage, unwrap } from '@/core/api';
 import { formatDateTime } from '@/core/format';
+import { useCan } from '@/core/session';
 
 // Building blocks of the Global Configuration pages: labelled On/Off switches, the detail page frame
 // (Back, Save Changes, Cancel, unsaved-changes warning) and a tenant setting edited as a draft.
@@ -88,9 +89,32 @@ function useLeaveWarning(dirty: boolean) {
 
 export const LEAVE_MESSAGE = 'You have unsaved changes. Leave without saving?';
 
+/** Only the Admin (settings.manage) changes Global Configuration; everyone else sees it read only. */
+export function useCanEditConfig(): boolean {
+  return useCan()('settings.manage');
+}
+
+/** Shown on Global Configuration for users who may only look (stakeholder decision: Admin-only editing). */
+export function ViewOnlyNotice() {
+  return <Alert tone="info">View only. Only the Admin can change Global Configuration.</Alert>;
+}
+
+/**
+ * Wraps controls so they are disabled for users who may only look: inputs, switches and buttons inside a disabled
+ * fieldset cannot be used, while links and page navigation still work.
+ */
+export function EditGate({ children }: { children: ReactNode }) {
+  const canEdit = useCanEditConfig();
+  return (
+    <fieldset disabled={!canEdit} className="contents">
+      {children}
+    </fieldset>
+  );
+}
+
 /**
  * Detail page of a Global Configuration module: title, description, Back, and (for forms) Save Changes and Cancel.
- * Unsaved changes are kept until saved or cancelled; leaving asks first.
+ * Unsaved changes are kept until saved or cancelled; leaving asks first. Read only without settings.manage.
  */
 export function ConfigShell({
   title,
@@ -116,6 +140,7 @@ export function ConfigShell({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const canEdit = useCanEditConfig();
   useLeaveWarning(dirty);
   const back = () => {
     if (!dirty || window.confirm(LEAVE_MESSAGE)) router.push('/configuration');
@@ -130,12 +155,13 @@ export function ConfigShell({
           <h1 className="text-xl font-semibold">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        {canEdit ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
+      {canEdit ? null : <ViewOnlyNotice />}
       {error ? <Alert>{errorMessage(error)}</Alert> : null}
       {saved && !dirty ? <Alert tone="success">Changes saved.</Alert> : null}
-      {children}
-      {onSave ? (
+      <EditGate>{children}</EditGate>
+      {onSave && canEdit ? (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur md:left-60">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
             <span className={cn('text-sm', dirty ? 'font-medium text-amber-700' : 'text-muted-foreground')}>{dirty ? 'You have unsaved changes' : 'All changes saved'}</span>

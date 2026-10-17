@@ -28,6 +28,8 @@ const MONEY = /^-?\d+(\.\d{1,2})?$/;
 const PRIORITIES = ['low', 'medium', 'high'] as const;
 const CATEGORIES = ['open', 'won', 'lost', 'invalid'] as const;
 const nullableUuid = { type: String, format: 'uuid', nullable: true } as const;
+/** Trims text; an empty value clears the field. */
+const trimOrNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
 const lowerTrim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim().toLowerCase() : value);
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
 
@@ -35,10 +37,24 @@ const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : val
 export const money = (v: string | null): string | undefined => (v === null ? undefined : Number(v).toFixed(2));
 
 /** Assigned From: the user who made the latest assignment, or the system (rotation, re-enquiry …). */
-export class AssignedFromDto {
-  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) userId!: string | null;
-  @ApiProperty() method!: string;
+/** The latest move between owners (list views; Manage Columns: Assigned From, Reassigned By, Reassigned At). */
+export class LastAssignmentDto {
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Agent who had the lead (empty = it was unassigned)' }) fromUserId!: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Agent who received it (empty = moved to Unassigned)' }) toUserId!: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true, description: 'Who made the move (empty = the system, see method)' }) byUserId!: string | null;
+  @ApiProperty({ description: 'manual, rotation, no_response, admin_fallback, user_deactivated, re_enquiry…' }) method!: string;
   @ApiProperty({ format: 'date-time' }) at!: string;
+}
+
+/** One move of a lead between owners (lead page assignment history; SRS §2 item 10, §3 item 10). */
+export class LeadAssignmentDto extends LastAssignmentDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true }) reasonId!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) note!: string | null;
+}
+
+export class LeadAssignmentList {
+  @ApiProperty({ type: () => [LeadAssignmentDto] }) data!: LeadAssignmentDto[];
 }
 
 // ---------------------------------------------------------------- Lead (components.schemas.Lead)
@@ -49,6 +65,7 @@ export class LeadDto {
   @ApiPropertyOptional({ pattern: E164.source }) phoneAlternate?: string;
   @ApiPropertyOptional({ format: 'email' }) email?: string;
   @ApiPropertyOptional() countryCode?: string;
+  @ApiPropertyOptional({ description: 'City (free text)' }) city?: string;
   @ApiPropertyOptional() preferredLanguage?: string;
   @ApiPropertyOptional() budgetMin?: string;
   @ApiPropertyOptional() budgetMax?: string;
@@ -62,8 +79,8 @@ export class LeadDto {
   @ApiPropertyOptional(nullableUuid) ownerUserId!: string | null;
   @ApiPropertyOptional(nullableUuid) teamId!: string | null;
   @ApiPropertyOptional({ ...nullableUuid, description: 'Dual Lead Ownership' }) secondaryOwnerUserId!: string | null;
-  @ApiPropertyOptional({ type: () => AssignedFromDto, nullable: true, readOnly: true, description: 'Who or what made the latest assignment (list views)' })
-  assignedFrom?: AssignedFromDto | null;
+  @ApiPropertyOptional({ type: () => LastAssignmentDto, nullable: true, readOnly: true, description: 'Latest move between owners (list views)' })
+  lastAssignment?: LastAssignmentDto | null;
   @ApiProperty({ format: 'uuid' }) stageId!: string;
   @ApiProperty({ enum: CATEGORIES }) stageCategory!: LeadRow['stageCategory'];
   @ApiPropertyOptional(nullableUuid) substatusId!: string | null;
@@ -91,6 +108,7 @@ export class LeadDto {
       phoneAlternate: opt(l.phoneAlternate),
       email: opt(l.email),
       countryCode: opt(l.countryCode),
+      city: opt(l.city),
       preferredLanguage: opt(l.preferredLanguage),
       budgetMin: money(l.budgetMin),
       budgetMax: money(l.budgetMax),
@@ -196,6 +214,7 @@ class LeadFields {
   @ApiPropertyOptional({ pattern: E164.source }) @IsOptional() @Matches(E164, { message: 'phoneAlternate must be in E.164 format' }) phoneAlternate?: string;
   @ApiPropertyOptional({ format: 'email' }) @IsOptional() @Transform(lowerTrim) @IsEmail() email?: string;
   @ApiPropertyOptional({ pattern: '^[A-Z]{2}$' }) @IsOptional() @Matches(/^[A-Z]{2}$/) countryCode?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 100, description: 'City (free text); empty clears it' }) @IsOptional() @Transform(trimOrNull) @IsString() @MaxLength(100) city?: string | null;
   @ApiPropertyOptional() @IsOptional() @Matches(/^[a-z]{2}$/, { message: 'preferredLanguage must be an ISO 639-1 code' }) preferredLanguage?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(MONEY) budgetMin?: string;
   @ApiPropertyOptional() @IsOptional() @Matches(MONEY) budgetMax?: string;

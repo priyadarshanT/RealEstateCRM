@@ -61,8 +61,8 @@ describe('lead page toolbar', () => {
     const sale = await admin.get(`/api/v1/leads?q=Toolbar%20Lead&dateField=sale_done&dateFrom=2020-01-01&total=true`).expect(200);
     expect(sale.body.page.total).toBe(0);
     await admin.get('/api/v1/leads?dateField=birthday').expect(400);
-    // Assigned From is in the list rows.
-    expect(created.body.data[0].assignedFrom).toMatchObject({ method: 'manual', userId: USERS.adminA.id });
+    // The latest move between owners is in the list rows (Assigned From, Reassigned By, Reassigned At).
+    expect(created.body.data[0].lastAssignment).toMatchObject({ method: 'manual', fromUserId: null, toUserId: USERS.aliA.id, byUserId: USERS.adminA.id, at: expect.any(String) });
   });
 
   it('Manage Columns: saved per user and list; Reset to Default removes the choice', async () => {

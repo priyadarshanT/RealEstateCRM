@@ -1017,8 +1017,8 @@ paths:
         and an empty updatedAt.
 
 
-        **Permission:** `settings.manage`'
-      x-permission: settings.manage
+        **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)'
+      x-permission: settings.view or settings.manage
       responses:
         '200':
           description: OK
@@ -1048,8 +1048,8 @@ paths:
       description: 'The saved value, or the default. The ETag is used as If-Match when saving.
 
 
-        **Permission:** `settings.manage`'
-      x-permission: settings.manage
+        **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)'
+      x-permission: settings.view or settings.manage
       parameters:
       - name: key
         in: path
@@ -2588,6 +2588,42 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooMany'
+  /leads/{id}/assignments:
+    get:
+      tags:
+      - Leads
+      summary: Assignment history of a lead
+      operationId: listLeadAssignments
+      description: 'Every move between owners, newest first: assigned from, assigned to, by whom (empty = the system),
+        how, when, reason and note.
+
+
+        **Permission:** `leads.view`'
+      x-permission: leads.view
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /leads/{id}/inquiries:
     get:
       tags:
@@ -3042,7 +3078,7 @@ paths:
       - Leads
       summary: Excel template for a migration
       operationId: downloadLeadImportTemplate
-      description: 'Columns Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes,
+      description: 'Columns Name, Country Code, City, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes,
         Created Date, with an example row and a sheet of the valid statuses and substatuses.
 
 
@@ -3407,8 +3443,8 @@ paths:
       - Assignment
       summary: List assignment rules
       operationId: listAssignmentRules
-      description: '**Permission:** `settings.manage`'
-      x-permission: settings.manage
+      description: '**Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)'
+      x-permission: settings.view or settings.manage
       responses:
         '200':
           description: OK
@@ -8382,8 +8418,8 @@ paths:
       description: 'Includes the user''s own calendar/mail connections for non-admins.
 
 
-        **Permission:** `settings.manage`'
-      x-permission: settings.manage
+        **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)'
+      x-permission: settings.view or settings.manage
       responses:
         '200':
           description: OK
@@ -8442,8 +8478,8 @@ paths:
       - Integrations
       summary: Get integration
       operationId: getIntegration
-      description: '**Permission:** `settings.manage`'
-      x-permission: settings.manage
+      description: '**Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)'
+      x-permission: settings.view or settings.manage
       parameters:
       - $ref: '#/components/parameters/Id'
       responses:
@@ -12321,6 +12357,12 @@ components:
         countryCode:
           type: string
           pattern: ^[A-Z]{2}$
+        city:
+          description: City (free text); an empty value clears it
+          oneOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
         preferredLanguage:
           type: string
         budgetMin:
@@ -12393,6 +12435,12 @@ components:
         countryCode:
           type: string
           pattern: ^[A-Z]{2}$
+        city:
+          description: City (free text); an empty value clears it
+          oneOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
         preferredLanguage:
           type: string
         budgetMin:
@@ -12437,6 +12485,56 @@ components:
           description: 'Optimistic lock: send the version you read'
       required:
       - version
+    LastAssignment:
+      type: object
+      required:
+      - method
+      - at
+      properties:
+        fromUserId:
+          description: Agent who had the lead (empty = it was unassigned)
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        toUserId:
+          description: Agent who received it (empty = moved to Unassigned)
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        byUserId:
+          description: Who made the move (empty = the system, see method)
+          oneOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        method:
+          type: string
+          description: manual, rotation, no_response, admin_fallback, user_deactivated, re_enquiry…
+        at:
+          type: string
+          format: date-time
+    LeadAssignment:
+      description: One move of a lead between owners (assignment history).
+      allOf:
+      - $ref: '#/components/schemas/LastAssignment'
+      - type: object
+        required:
+        - id
+        properties:
+          id:
+            type: string
+            format: uuid
+          reasonId:
+            oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          note:
+            oneOf:
+            - type: string
+            - type: 'null'
     Lead:
       type: object
       properties:
@@ -12460,6 +12558,9 @@ components:
         countryCode:
           type: string
           pattern: ^[A-Z]{2}$
+        city:
+          type: string
+          description: City (free text)
         preferredLanguage:
           type: string
         budgetMin:
@@ -12537,26 +12638,12 @@ components:
           - type: 'null'
           readOnly: true
           description: Earliest scheduled appointment
-        assignedFrom:
+        lastAssignment:
           readOnly: true
-          description: 'Lists: who made the latest assignment (userId empty = the system, e.g. rotation)'
+          description: 'Lists: the latest move between owners (Manage Columns: Assigned From, Reassigned By, Reassigned At)'
           oneOf:
           - type: 'null'
-          - type: object
-            required:
-            - method
-            - at
-            properties:
-              userId:
-                oneOf:
-                - type: string
-                  format: uuid
-                - type: 'null'
-              method:
-                type: string
-              at:
-                type: string
-                format: date-time
+          - $ref: '#/components/schemas/LastAssignment'
         closeReasonId:
           oneOf:
           - type: string
@@ -15433,6 +15520,7 @@ components:
             fullName: name
             phonePrimary: mobile
             email: email
+            city: city
             project: interested_in
       required:
       - name

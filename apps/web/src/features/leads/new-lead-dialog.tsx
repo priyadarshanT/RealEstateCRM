@@ -107,6 +107,9 @@ export function NewLeadDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           <Field label="Country (2-letter code)">
             <Input value={form.countryCode ?? ''} maxLength={2} onChange={(e) => set({ countryCode: e.target.value.toUpperCase() })} placeholder="AE" />
           </Field>
+          <Field label="City">
+            <Input value={form.city ?? ''} maxLength={100} onChange={(e) => set({ city: e.target.value })} placeholder="Dubai" />
+          </Field>
           <Field label="Budget min (AED)">
             <Input inputMode="decimal" value={form.budgetMin ?? ''} onChange={(e) => set({ budgetMin: e.target.value })} />
           </Field>

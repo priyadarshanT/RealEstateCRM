@@ -570,6 +570,7 @@ CREATE TABLE leads (
   phone_alternate text CHECK (phone_alternate ~ '^\+[1-9][0-9]{6,14}$'), -- Alternate phone (E.164)
   email           citext,                                          -- Email (case-insensitive)
   country_code    char(2) CHECK (country_code ~ '^[A-Z]{2}$'),     -- Country of residence (ISO)
+  city            text CHECK (city IS NULL OR length(btrim(city)) BETWEEN 1 AND 100), -- City (free text, migration 0011)
   preferred_language text,                                         -- Preferred language (ISO 639-1)
   budget_min      numeric(14,2) CHECK (budget_min >= 0),           -- Budget from
   budget_max      numeric(14,2) CHECK (budget_max >= 0),           -- Budget to

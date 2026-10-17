@@ -19,6 +19,7 @@ import {
   BulkLeadActionDto,
   BulkResultDto,
   InquiryDto,
+  LeadAssignmentDto,
   LeadDto,
   LeadShareDto,
   NoteDto,
@@ -246,6 +247,21 @@ export class LeadActionsService implements OnModuleInit {
   async inquiries(p: Principal, id: string): Promise<InquiryDto[]> {
     await this.leads.visible(p, id, { includeDeleted: true });
     return (await this.repo.inquiries(id)).map(InquiryDto.from);
+  }
+
+  /** Every move between owners: assigned from, assigned to, by whom, when and why (lead page). */
+  async assignments(p: Principal, id: string): Promise<LeadAssignmentDto[]> {
+    await this.leads.visible(p, id, { includeDeleted: true });
+    return (await this.repo.assignmentsOf(id)).map((a) => ({
+      id: a.id,
+      fromUserId: a.fromUserId,
+      toUserId: a.toUserId,
+      byUserId: a.changedBy,
+      method: a.method,
+      at: a.changedAt.toISOString(),
+      reasonId: a.reasonId,
+      note: a.note,
+    }));
   }
 
   // =================================================================== bulk (max 500 per request)

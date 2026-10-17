@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../core/auth/decorators';
+import { RequireAnyPermission, RequirePermission } from '../../core/auth/decorators';
 import { AssignmentService } from './assignment.service';
 import { AssignmentRuleDto, AssignmentRuleInputDto, AssignmentRuleList, ReorderRulesDto } from './dto/rule.dto';
 
@@ -11,7 +11,7 @@ export class AssignmentController {
   constructor(private readonly assignment: AssignmentService) {}
 
   @Get()
-  @RequirePermission('settings.manage')
+  @RequireAnyPermission('settings.view', 'settings.manage')
   @ApiOperation({ operationId: 'listAssignmentRules', summary: 'List assignment rules' })
   @ApiOkResponse({ type: AssignmentRuleList })
   async list(): Promise<AssignmentRuleList> {

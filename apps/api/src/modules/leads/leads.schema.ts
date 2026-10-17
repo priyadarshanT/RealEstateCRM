@@ -13,6 +13,7 @@ export const leads = pgTable('leads', {
   phoneAlternate: text('phone_alternate'),
   email: text('email'),
   countryCode: char('country_code', { length: 2 }),
+  city: text('city'),
   preferredLanguage: text('preferred_language'),
   budgetMin: numeric('budget_min', { precision: 14, scale: 2 }),
   budgetMax: numeric('budget_max', { precision: 14, scale: 2 }),

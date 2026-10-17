@@ -91,6 +91,7 @@ export class IncomingLeadIntake implements OnModuleInit {
       email: m.email,
       preferredLanguage: m.preferredLanguage,
       countryCode: m.countryCode,
+      city: m.city,
       budgetMin: m.budgetMin,
       budgetMax: m.budgetMax,
       budgetCurrency: m.budgetCurrency,

@@ -35,6 +35,7 @@ export function LeadDetailsCard({ lead, canEdit }: { lead: Lead; canEdit: boolea
     ['Phone', lead.phonePrimary ?? '—'],
     ['Alt. phone', lead.phoneAlternate ?? '—'],
     ['Email', lead.email ?? '—'],
+    ['City', lead.city ?? '—'],
     ['Budget', budget],
     ['Source', `${sources.get(lead.sourceId)?.name ?? '—'}${lead.campaignId ? ` · ${campaigns.get(lead.campaignId)?.name ?? ''}` : ''}`],
     ['Owner', lead.ownerUserId ? (users.get(lead.ownerUserId)?.fullName ?? 'Assigned') : 'Unassigned'],
@@ -215,6 +216,9 @@ function EditLeadDialog({ lead, open, onClose }: { lead: Lead; open: boolean; on
           </Field>
           <Field label="Country (2-letter code)">
             <Input maxLength={2} value={String(value('countryCode'))} onChange={(e) => set({ countryCode: e.target.value.toUpperCase() })} />
+          </Field>
+          <Field label="City">
+            <Input maxLength={100} value={String(value('city'))} onChange={(e) => set({ city: e.target.value })} placeholder="Dubai" />
           </Field>
           <Field label="Preferred language">
             <Input value={String(value('preferredLanguage'))} onChange={(e) => set({ preferredLanguage: e.target.value })} placeholder="English, Arabic" />

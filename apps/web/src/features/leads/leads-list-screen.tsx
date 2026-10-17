@@ -19,7 +19,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
-import { formatDate, formatRelativeDay, initials } from '@/core/format';
+import { formatDate, formatDateTime, formatRelativeDay, initials } from '@/core/format';
 import { byId, useCampaigns, useColleagues, useProjectList, useSources, useStages, useSubstatuses } from '@/core/lookups';
 import { useCan, useMe } from '@/core/session';
 import { useClientPolicy } from '@/features/global-config/policy';
@@ -157,11 +157,19 @@ export function LeadsListScreen() {
         return lead.substatusId ? <span className="text-xs">{substatuses.get(lead.substatusId)?.name ?? '—'}</span> : <span className="text-muted-foreground">—</span>;
       case 'secondaryOwner':
         return lead.secondaryOwnerUserId ? <span className="text-xs">{users.get(lead.secondaryOwnerUserId)?.fullName ?? '—'}</span> : '—';
+      // Latest move between agents (stakeholder update: who had the lead, who made the move, when).
       case 'assignedFrom': {
-        const a = lead.assignedFrom;
+        const a = lead.lastAssignment;
         if (!a) return '—';
-        return <span className="text-xs">{a.userId ? (users.get(a.userId)?.fullName ?? '—') : `System · ${a.method.replace(/_/g, ' ')}`}</span>;
+        return <span className="text-xs">{a.fromUserId ? (users.get(a.fromUserId)?.fullName ?? '—') : 'Unassigned'}</span>;
       }
+      case 'reassignedBy': {
+        const a = lead.lastAssignment;
+        if (!a) return '—';
+        return <span className="text-xs">{a.byUserId ? (users.get(a.byUserId)?.fullName ?? '—') : `System · ${a.method.replace(/_/g, ' ')}`}</span>;
+      }
+      case 'reassignedAt':
+        return lead.lastAssignment ? <span className="whitespace-nowrap text-xs">{formatDateTime(lead.lastAssignment.at)}</span> : '—';
       case 'campaign':
         return lead.campaignId ? <span className="text-xs">{campaigns.get(lead.campaignId)?.name ?? '—'}</span> : '—';
       case 'email':
@@ -172,6 +180,8 @@ export function LeadsListScreen() {
       }
       case 'country':
         return lead.countryCode ?? '—';
+      case 'city':
+        return lead.city ?? '—';
       case 'source':
         return <span className="text-xs text-muted-foreground">{sources.get(lead.sourceId)?.name ?? '—'}</span>;
       case 'agent': {

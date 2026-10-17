@@ -20,5 +20,5 @@ export const NAV: NavItem[] = [
   { href: '/attendance', label: 'Attendance', icon: Clock, anyOf: ['attendance.view'] },
   { href: '/team', label: 'Team', icon: Users, anyOf: ['users.manage'] },
   { href: '/organization', label: 'Organization', icon: Building2, anyOf: ['settings.manage', 'billing.view'] },
-  { href: '/configuration', label: 'Global Configuration', icon: Settings, anyOf: ['settings.manage'] },
+  { href: '/configuration', label: 'Global Configuration', icon: Settings, anyOf: ['settings.manage', 'settings.view'] },
 ];

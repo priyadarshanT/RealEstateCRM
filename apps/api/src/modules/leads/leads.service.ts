@@ -16,6 +16,7 @@ import { SettingsService } from '../settings/settings.service';
 import {
   StatusCountDto,
   CheckExistingResult,
+  LastAssignmentDto,
   LeadCreateDto,
   LeadDto,
   LeadExistsDto,
@@ -25,7 +26,7 @@ import {
 } from './dto/lead.dto';
 import { canEdit, canManage, LeadAccess, LeadScope } from './lead-scope';
 import { LeadErrors } from './leads.errors';
-import { ActivityInput, LeadPatch, LeadsRepository } from './leads.repository';
+import { ActivityInput, LatestAssignment, LeadPatch, LeadsRepository } from './leads.repository';
 import { activities, AssignmentMethod, LeadRow, leadProjects, leads, leadShares, savedFilters } from './leads.schema';
 import { dayAfter, dayStart, zonedDayAfter, zonedDayStart } from '../../core/http/dates';
 
@@ -57,6 +58,7 @@ const EDITABLE = [
   'phoneAlternate',
   'email',
   'countryCode',
+  'city',
   'preferredLanguage',
   'budgetMin',
   'budgetMax',
@@ -155,12 +157,8 @@ export class LeadsService {
     ]);
     const hasMore = rows.length > query.limit;
     const hide = await this.hidesContact();
-    const from = (id: string) => {
-      const a = assigned.get(id);
-      return a ? { userId: a.changedBy, method: a.method, at: a.changedAt.toISOString() } : null;
-    };
     return {
-      data: kept.map((l) => ({ ...maskContact(LeadDto.from(l, projects.get(l.id), access.get(l.id)), hide), assignedFrom: from(l.id) })),
+      data: kept.map((l) => ({ ...maskContact(LeadDto.from(l, projects.get(l.id), access.get(l.id)), hide), lastAssignment: lastAssignmentDto(assigned.get(l.id)) })),
       page: {
         nextCursor: hasMore ? encodeCursor([offset + query.limit]) : null,
         hasMore,
@@ -196,7 +194,7 @@ export class LeadsService {
     const [projects, assigned] = await Promise.all([this.repo.projectsOf(rows.map((r) => r.id)), this.repo.latestAssignments(rows.map((r) => r.id))]);
     const { hide_contact_info: hide } = await this.features();
     const masked = hide.enabled && hide.role_keys.includes(p.roleKey);
-    return rows.map((l) => ({ dto: maskContact(LeadDto.from(l, projects.get(l.id)), masked), assignedFrom: assigned.get(l.id) ?? null, closedAt: l.closedAt }));
+    return rows.map((l) => ({ dto: maskContact(LeadDto.from(l, projects.get(l.id)), masked), lastAssignment: assigned.get(l.id) ?? null, closedAt: l.closedAt }));
   }
 
   /**
@@ -750,6 +748,11 @@ const hideText = (v: string | undefined, keep: number): string | undefined =>
   v === undefined ? undefined : v.length <= keep + 2 ? '•'.repeat(v.length) : v.slice(0, keep) + '•'.repeat(Math.max(3, v.length - keep - 2)) + v.slice(-2);
 
 /** Masks phone numbers and email (Hide Lead Contact Info): +971•••••67, a•••@example.com. */
+/** The latest move between owners as shown in list views. */
+function lastAssignmentDto(a: LatestAssignment | undefined): LastAssignmentDto | null {
+  return a ? { fromUserId: a.fromUserId, toUserId: a.toUserId, byUserId: a.changedBy, method: a.method, at: a.changedAt.toISOString() } : null;
+}
+
 export function maskContact(dto: LeadDto, hide: boolean): LeadDto {
   if (!hide) return dto;
   const [user, domain] = (dto.email ?? '').split('@');

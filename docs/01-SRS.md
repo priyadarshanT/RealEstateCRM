@@ -16,6 +16,14 @@ Based on the developer requirements brief (29 September 2026), stakeholder feedb
 | 5 | **Rotation replaces the assignment rules' round-robin and the 10-minute rule** (architect decision) | Each rotation rule: conditions, team or agents, shift days and hours, time zone, minutes before an unanswered lead rotates to the next agent, maximum rotations, fallback (Admin, Unassigned or a chosen user). A manually chosen owner has no timer. |
 | 6 | Migration, email, watermark | Migration: Excel template, status / substatus / owner / project / created date columns, skip or update known leads, batch ID with counts, retry without duplicates. Email: sender name, reply-to and signature. Watermark: applied on download to images and PDFs of the chosen kinds (local, no outside service). |
 
+## Stakeholder update · 17 October 2026 (follow-up)
+
+| # | Decision | What changed |
+|---|---|---|
+| 1 | **Only the Admin changes Global Configuration; everyone else views it** | Every role gets the new permission `settings.view` and sees Global Configuration read only (switches, fields and buttons disabled, no Save). Only `settings.manage` (Admin by default; no longer the Director) saves. Operational logs (setting history, incoming webhook events, sync runs, import batches) stay with the Admin. Section 11. |
+| 2 | **City** is recorded on the lead | Free text, optional, up to 100 characters: on the lead form and page, a Manage Columns column, its own column in the Excel export, the migration template, imports and the general webhook mapping. Section 2. |
+| 3 | **Assignment history** on reassignment | Every move records Assigned From (the agent who had the lead), Assigned To, who or which rule made the move, date and time, reason and note. Manage Columns and the export add **Assigned From** (previous agent), **Reassigned By** and **Reassigned At** for the latest move; the lead page lists every move. Section 2. |
+
 ## What changed in version 1.2
 
 | # | Decision | What changed in this document |
@@ -121,7 +129,9 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 
 **Lead list**
 
-10. Columns (**Manage Columns**, saved per user: show/hide, search, drag to reorder, Apply / Cancel / Reset to Default): name, phone, email, status, substatus, project, Assigned To (owner), Secondary Owner, Assigned From (who or what made the latest assignment), note, country, source, campaign, priority, score, next follow-up, created. City is not recorded on leads, so it is not offered.
+10. Columns (**Manage Columns**, saved per user: show/hide, search, drag to reorder, Apply / Cancel / Reset to Default): name, phone, email, status, substatus, project, Assigned To (owner), Secondary Owner, Assigned From (the agent who had the lead before the latest move; Unassigned if nobody), Reassigned By (who or which rule made the latest move), Reassigned At (its date and time), note, country, city, source, campaign, priority, score, next follow-up, created.
+10a. **City** is a free-text field of the lead (optional, up to 100 characters), shown on the lead page and form and exported as its own column.
+10b. **Assignment history** on the lead page: every move between agents, newest first, with Assigned From, Assigned To, who or which rule made it, date and time, reason and note.
 11. Search and filter by name, phone, email, project, campaign, agent, team, status, budget, source, and a **Calendar / Date Range** on Lead Created, Follow-up or Sale Done date (presets Today, Yesterday, Last 7 Days, This Month, Last Month, or custom; company time zone, end date included).
 11a. **Show Lead Counts** shows Hot / Warm / Cold / Sale Done totals (zeros included) with the same search, dates and filters, in the user's access; the choice is kept for the session.
 11b. **Export Leads**: Selected Leads or All Filtered Leads, with the count shown first, to Excel with the user's visible columns in order; follows the Export Leads switch, the leads.export permission, lead access and contact masking; made in the background.
@@ -287,17 +297,17 @@ The Team menu has three parts.
 
 ## 11. Global Configuration · stakeholder update 17 October 2026
 
-1. **Global Configuration** (menu, Admin only) replaces Settings & Integrations. Three sections: **Module Settings**, **Integration**, **Communication**. Cards: wide, rounded, coloured icon, title and description; the whole card opens its page. 4 columns on desktop, 2 on tablet, 1 on mobile.
+1. **Global Configuration** (menu; every user can view it, only the Admin changes it) replaces Settings & Integrations. Three sections: **Module Settings**, **Integration**, **Communication**. Cards: wide, rounded, coloured icon, title and description; the whole card opens its page. 4 columns on desktop, 2 on tablet, 1 on mobile.
 2. Each module page has a title, description, Back, **Save Changes** and **Cancel**, and warns before leaving with unsaved changes. Switches are labelled On / Off; dependent fields appear only when relevant.
 3. Module cards: General, Security, Attendance, Leads, Data, Projects and Properties, Locality, QR Code, Tags, Manage Marketing, Migration, Manage Status, Listing Management, Automation, Manage Source, Dev Resources. Modules without an agreed scope are shown as "Not available yet", never as finished.
 4. **General:** call notifications and call detection (need a calling integration), default country (name, ISO code, dial code), default currency (no silent conversion), watermark (text or logo, opacity, placement, preview, file types; stamped on download, the original file never changes), currencies and exchange rates, invoice numbering.
-4a. **Migration:** download the Excel template; map Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date; preview with checks; choose to skip or update leads that already exist; each import is a batch with an ID and counts (new, updated, skipped, rejected) and an error report; a failed batch can be retried without duplicates.
+4a. **Migration:** download the Excel template; map Name, Country Code, City, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date; preview with checks; choose to skip or update leads that already exist; each import is a batch with an ID and counts (new, updated, skipped, rejected) and an error report; a failed batch can be retried without duplicates.
 5. **Security:** require two-factor sign-in, allow copy and paste (Admins keep it), disable screenshots (not possible in web browsers; saved for a mobile app).
 6. **Leads:** the switches in the update table above, plus rotation rules, lead score weights and reassignment reasons. **Dual Lead Ownership:** a secondary owner (never the owner) sees and edits the lead and, when the notification switch is on, hears about status changes, owner changes and re-enquiries.
 7. **Manage Status:** Hot, Warm (open; need a next follow-up), Cold (closed; needs a substatus), Sale Done (won). Substatuses: name, order, active, requires scheduling (a date and time is then required). Names are unique per status; a substatus a lead has used cannot be deleted, only turned off.
 8. **Integration:** 3rd Parties (Webhook, Skyloov, Dubizzle, Bayut, Property Finder), Social Platforms (WhatsApp, Facebook), Others (Gmail, Google Ads Landing Page, Google Ads Lead Form, Google Campaign, Microsoft Ads). A card shows Connected only when the connection reports it, with Manage, Test Connection, Disconnect, last sync and errors. Failed incoming data is retried automatically, then shown for manual retry. Cards without a connector say "Not available yet".
 9. **Communication:** Templates, IVR (not available yet), Email Configuration (sender, sender name, reply-to address, signature added to every email).
-10. Settings are per company, changed only by the Admin, enforced by the server, kept with a change history (who, when, before, after) and protected against two people saving at once.
+10. Settings are per company, viewed by everyone (read only, `settings.view`), changed only by the Admin (`settings.manage`), enforced by the server, kept with a change history (who, when, before, after) and protected against two people saving at once.
 
 ---
 

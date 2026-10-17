@@ -17,6 +17,7 @@ const FIELDS: { key: string; label: string }[] = [
   { key: 'phoneAlternate', label: 'Alternate phone' },
   { key: 'email', label: 'Email' },
   { key: 'countryCode', label: 'Country' },
+  { key: 'city', label: 'City' },
   { key: 'preferredLanguage', label: 'Language' },
   { key: 'budgetMin', label: 'Budget min' },
   { key: 'budgetMax', label: 'Budget max' },

@@ -14,6 +14,7 @@ import { ProjectLeadCountList, ProjectLeadCountQuery, StatusCountList, Secondary
   CheckExistingQuery,
   CheckExistingResult,
   InquiryList,
+  LeadAssignmentList,
   LeadCreateDto,
   LeadDto,
   LeadListQuery,
@@ -165,6 +166,14 @@ export class LeadsController {
   @ApiOkResponse({ type: ActivityPage })
   timeline(@CurrentPrincipal() p: Principal, @Param('id', ParseUUIDPipe) id: string, @Query() query: TimelineQuery): Promise<ActivityPage> {
     return this.actions.timeline(p, id, query);
+  }
+
+  @Get(':id/assignments')
+  @RequirePermission('leads.view')
+  @ApiOperation({ operationId: 'listLeadAssignments', summary: 'Assignment history of a lead' })
+  @ApiOkResponse({ type: LeadAssignmentList })
+  async assignments(@CurrentPrincipal() p: Principal, @Param('id', ParseUUIDPipe) id: string): Promise<LeadAssignmentList> {
+    return { data: await this.actions.assignments(p, id) };
   }
 
   @Get(':id/inquiries')

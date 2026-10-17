@@ -101,6 +101,31 @@ describe('Global Configuration', () => {
     });
   });
 
+  it('every user views Global Configuration; only the Admin changes it (stakeholder decision)', async () => {
+    // The sample company's seats are all used, so Sara (Team Leader) acts as Director for this test.
+    const setRole = (key: string) =>
+      ownerQuery(`UPDATE users SET role_id = (SELECT id FROM roles WHERE tenant_id = $1 AND key = $2) WHERE id = $3`, [TENANT_A, key, USERS.saraA.id]);
+    await setRole('director');
+    try {
+      const director = await signIn(app, USERS.saraA);
+      for (const viewer of [ali, director]) {
+        expect((await viewer.get('/api/v1/settings').expect(200)).body.data.length).toBeGreaterThan(0);
+        const one = await viewer.get('/api/v1/settings/leads.features').expect(200);
+        expect(one.body.value).toMatchObject({ rotation: true });
+        await viewer.get('/api/v1/assignment-rules').expect(200);
+        await viewer.get('/api/v1/integrations').expect(200);
+        await viewer.put('/api/v1/settings/leads.features').send({ value: DEFAULTS }).expect(403);
+        await viewer.post('/api/v1/lead-substatuses').send({ stageKey: 'cold', name: 'Viewer try' }).expect(403);
+        // Operational logs (incoming lead payloads, sync runs) stay with the Admin.
+        await viewer.get('/api/v1/settings/leads.features/history').expect(403);
+      }
+      expect((await director.get('/api/v1/me').expect(200)).body.permissions).toEqual(expect.arrayContaining(['settings.view']));
+      expect((await director.get('/api/v1/me').expect(200)).body.permissions).not.toContain('settings.manage');
+    } finally {
+      await setRole('team_leader');
+    }
+  });
+
   it('Dual Lead Ownership: a secondary owner (never the owner) sees and edits the lead and is notified', async () => {
     const lead = (await admin.post('/api/v1/leads').send({ fullName: 'Two Owners', phonePrimary: '+971556660010', sourceId: SOURCE_META_A, ownerUserId: USERS.aliA.id }).expect(201)).body;
     const off = await admin.post(`/api/v1/leads/${lead.id}/secondary-owner`).send({ userId: USERS.miraA.id }).expect(403);
@@ -127,33 +152,33 @@ describe('Global Configuration', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(template.body as never);
     expect((wb.getWorksheet('Leads')!.getRow(1).values as string[]).slice(1)).toEqual([
-      'Name', 'Country Code', 'Phone', 'Email', 'Source', 'Owner', 'Status', 'Substatus', 'Project', 'Budget Min', 'Budget Max', 'Currency', 'Notes', 'Created Date',
+      'Name', 'Country Code', 'City', 'Phone', 'Email', 'Source', 'Owner', 'Status', 'Substatus', 'Project', 'Budget Min', 'Budget Max', 'Currency', 'Notes', 'Created Date',
     ]);
     expect(wb.getWorksheet('Statuses')!.rowCount).toBeGreaterThan(10);
 
     const known = (await admin.post('/api/v1/leads').send({ fullName: 'Old Name', phonePrimary: '+971556660020', sourceId: SOURCE_META_A }).expect(201)).body;
     const project = (await admin.get(`/api/v1/projects/${PROJECT_BEACHFRONT}`).expect(200)).body.name as string;
     const csv = [
-      'Name,Country Code,Phone,Status,Substatus,Owner,Project,Created Date',
-      `Migrated Hot,AE,+971556660021,Hot,Zoom Schedule,ali@a.ae,${project},2025-03-01`,
-      'Migrated Cold,IN,+971556660022,Cold,Not Interested,,,',
-      'New Name,AE,+971556660020,Warm,,,,',
-      'Bad Status,AE,+971556660023,Lukewarm,,,,',
-      'Cold No Sub,AE,+971556660024,Cold,,,,',
+      'Name,Country Code,City,Phone,Status,Substatus,Owner,Project,Created Date',
+      `Migrated Hot,AE,Dubai,+971556660021,Hot,Zoom Schedule,ali@a.ae,${project},2025-03-01`,
+      'Migrated Cold,IN,,+971556660022,Cold,Not Interested,,,',
+      'New Name,AE,Sharjah,+971556660020,Warm,,,,',
+      'Bad Status,AE,,+971556660023,Lukewarm,,,,',
+      'Cold No Sub,AE,,+971556660024,Cold,,,,',
     ].join('\n');
     const fileId = await upload(admin, 'migration.csv', 'text/csv', Buffer.from(csv), 'import');
     const started = await admin.post('/api/v1/leads/imports').send({ fileId, sourceId: SOURCE_META_A, duplicateMode: 'skip' }).expect(201);
-    expect(started.body.mapping).toMatchObject({ status: 'Status', substatus: 'Substatus', owner: 'Owner', project: 'Project', createdDate: 'Created Date' });
+    expect(started.body.mapping).toMatchObject({ city: 'City', status: 'Status', substatus: 'Substatus', owner: 'Owner', project: 'Project', createdDate: 'Created Date' });
     await admin.post(`/api/v1/leads/imports/${started.body.id}/confirm`).expect(202);
     await app.get(QueueService).drain('lead-import');
     const done = (await admin.get(`/api/v1/leads/imports/${started.body.id}`).expect(200)).body;
     expect(done).toMatchObject({ status: 'completed', duplicateMode: 'skip', rowsImported: 2, rowsSkipped: 1, rowsRejected: 2, batchId: expect.stringMatching(/^B-/) });
 
-    const [hot] = await ownerQuery<{ owner_user_id: string; created_at: Date; stage: string; sub: string; projects: number }>(
-      `SELECT l.owner_user_id, l.created_at, s.key AS stage, x.name AS sub, (SELECT count(*)::int FROM lead_projects p WHERE p.lead_id = l.id) AS projects
+    const [hot] = await ownerQuery<{ owner_user_id: string; created_at: Date; city: string; stage: string; sub: string; projects: number }>(
+      `SELECT l.owner_user_id, l.created_at, l.city, s.key AS stage, x.name AS sub, (SELECT count(*)::int FROM lead_projects p WHERE p.lead_id = l.id) AS projects
        FROM leads l JOIN lead_stages s ON s.id = l.stage_id LEFT JOIN lead_substatuses x ON x.id = l.substatus_id WHERE l.phone_primary = '+971556660021'`,
     );
-    expect(hot).toMatchObject({ owner_user_id: USERS.aliA.id, stage: 'hot', sub: 'Zoom Schedule', projects: 1 });
+    expect(hot).toMatchObject({ owner_user_id: USERS.aliA.id, city: 'Dubai', stage: 'hot', sub: 'Zoom Schedule', projects: 1 });
     expect(hot!.created_at.toISOString().slice(0, 10)).toBe('2025-03-01');
     expect((await admin.get(`/api/v1/leads/${known.id}`).expect(200)).body.fullName).toBe('Old Name');
 
@@ -163,7 +188,7 @@ describe('Global Configuration', () => {
     await app.get(QueueService).drain('lead-import');
     const updated = (await admin.get(`/api/v1/leads/imports/${again.body.id}`).expect(200)).body;
     expect(updated).toMatchObject({ status: 'completed', rowsImported: 0, rowsUpdated: 3, rowsRejected: 2 });
-    expect((await admin.get(`/api/v1/leads/${known.id}`).expect(200)).body.fullName).toBe('New Name');
+    expect((await admin.get(`/api/v1/leads/${known.id}`).expect(200)).body).toMatchObject({ fullName: 'New Name', city: 'Sharjah' });
 
     const list = await admin.get('/api/v1/leads/imports').expect(200);
     expect(list.body.data.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([again.body.id, started.body.id]);

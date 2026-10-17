@@ -20,6 +20,15 @@ export type LeadInsert = typeof leads.$inferInsert;
 export type LeadPatch = Partial<Omit<LeadRow, 'id' | 'tenantId' | 'createdAt' | 'version'>>;
 export type InquiryInsert = Omit<typeof leadInquiries.$inferInsert, 'tenantId'>;
 
+/** The latest move of a lead between owners (lead_assignments). */
+export interface LatestAssignment {
+  fromUserId: string | null;
+  toUserId: string | null;
+  changedBy: string | null;
+  method: string;
+  changedAt: Date;
+}
+
 export interface ActivityInput {
   type: ActivityType;
   summary: string;
@@ -160,14 +169,26 @@ export class LeadsRepository {
   }
 
   /** The latest assignment of each lead (Assigned From). */
-  async latestAssignments(leadIds: string[]): Promise<Map<string, { changedBy: string | null; method: string; changedAt: Date }>> {
+  async latestAssignments(leadIds: string[]): Promise<Map<string, LatestAssignment>> {
     if (!leadIds.length) return new Map();
     const rows = await this.db.current
-      .selectDistinctOn([leadAssignments.leadId], { leadId: leadAssignments.leadId, changedBy: leadAssignments.changedBy, method: leadAssignments.method, changedAt: leadAssignments.changedAt })
+      .selectDistinctOn([leadAssignments.leadId], {
+        leadId: leadAssignments.leadId,
+        fromUserId: leadAssignments.fromUserId,
+        toUserId: leadAssignments.toUserId,
+        changedBy: leadAssignments.changedBy,
+        method: leadAssignments.method,
+        changedAt: leadAssignments.changedAt,
+      })
       .from(leadAssignments)
       .where(inArray(leadAssignments.leadId, leadIds))
       .orderBy(leadAssignments.leadId, desc(leadAssignments.changedAt));
     return new Map(rows.map((r) => [r.leadId, r]));
+  }
+
+  /** Every move of one lead between owners, newest first (lead page assignment history). */
+  async assignmentsOf(leadId: string) {
+    return this.db.current.select().from(leadAssignments).where(eq(leadAssignments.leadId, leadId)).orderBy(desc(leadAssignments.changedAt), desc(leadAssignments.id));
   }
 
   async insertAssignment(values: {

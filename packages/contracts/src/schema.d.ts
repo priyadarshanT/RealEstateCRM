@@ -399,7 +399,7 @@ export interface paths {
          * List settings
          * @description Global Configuration. Keys: general.preferences, security.policy, leads.features (with the Rotation switch), leads.scoring, finance.numbering, exports.retention. Settings never saved are listed with their default and an empty updatedAt.
          *
-         *     **Permission:** `settings.manage`
+         *     **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)
          */
         get: operations["listSettings"];
         put?: never;
@@ -421,7 +421,7 @@ export interface paths {
          * Get setting
          * @description The saved value, or the default. The ETag is used as If-Match when saving.
          *
-         *     **Permission:** `settings.manage`
+         *     **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)
          */
         get: operations["getSetting"];
         /**
@@ -934,6 +934,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leads/{id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Assignment history of a lead
+         * @description Every move between owners, newest first: assigned from, assigned to, by whom (empty = the system), how, when, reason and note.
+         *
+         *     **Permission:** `leads.view`
+         */
+        get: operations["listLeadAssignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/leads/{id}/inquiries": {
         parameters: {
             query?: never;
@@ -1149,7 +1171,7 @@ export interface paths {
         };
         /**
          * Excel template for a migration
-         * @description Columns Name, Country Code, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date, with an example row and a sheet of the valid statuses and substatuses.
+         * @description Columns Name, Country Code, City, Phone, Email, Source, Owner, Status, Substatus, Project, Budget, Notes, Created Date, with an example row and a sheet of the valid statuses and substatuses.
          *
          *     **Permission:** `leads.import`
          */
@@ -1347,7 +1369,7 @@ export interface paths {
         };
         /**
          * List assignment rules
-         * @description **Permission:** `settings.manage`
+         * @description **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)
          */
         get: operations["listAssignmentRules"];
         put?: never;
@@ -3403,7 +3425,7 @@ export interface paths {
          * List integrations
          * @description Includes the user's own calendar/mail connections for non-admins.
          *
-         *     **Permission:** `settings.manage`
+         *     **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)
          */
         get: operations["listIntegrations"];
         put?: never;
@@ -3429,7 +3451,7 @@ export interface paths {
         };
         /**
          * Get integration
-         * @description **Permission:** `settings.manage`
+         * @description **Permission:** `settings.view` or `settings.manage` (Global Configuration is read-only without settings.manage)
          */
         get: operations["getIntegration"];
         put?: never;
@@ -5337,6 +5359,8 @@ export interface components {
             /** Format: email */
             email?: string;
             countryCode?: string;
+            /** @description City (free text); an empty value clears it */
+            city?: string | null;
             preferredLanguage?: string;
             /**
              * @description Decimal as string, 2 places
@@ -5382,6 +5406,8 @@ export interface components {
             /** Format: email */
             email?: string;
             countryCode?: string;
+            /** @description City (free text); an empty value clears it */
+            city?: string | null;
             preferredLanguage?: string;
             /**
              * @description Decimal as string, 2 places
@@ -5409,6 +5435,25 @@ export interface components {
             /** @description Optimistic lock: send the version you read */
             version: number;
         };
+        LastAssignment: {
+            /** @description Agent who had the lead (empty = it was unassigned) */
+            fromUserId?: string | null;
+            /** @description Agent who received it (empty = moved to Unassigned) */
+            toUserId?: string | null;
+            /** @description Who made the move (empty = the system, see method) */
+            byUserId?: string | null;
+            /** @description manual, rotation, no_response, admin_fallback, user_deactivated, re_enquiry… */
+            method: string;
+            /** Format: date-time */
+            at: string;
+        };
+        /** @description One move of a lead between owners (assignment history). */
+        LeadAssignment: components["schemas"]["LastAssignment"] & {
+            /** Format: uuid */
+            id: string;
+            reasonId?: string | null;
+            note?: string | null;
+        };
         Lead: {
             /** Format: uuid */
             readonly id: string;
@@ -5420,6 +5465,8 @@ export interface components {
             /** Format: email */
             email?: string;
             countryCode?: string;
+            /** @description City (free text) */
+            city?: string;
             preferredLanguage?: string;
             /**
              * @description Decimal as string, 2 places
@@ -5455,13 +5502,8 @@ export interface components {
             secondaryOwnerUserId?: string | null;
             /** @description Earliest scheduled appointment */
             readonly nextAppointmentAt?: string | null;
-            /** @description Lists: who made the latest assignment (userId empty = the system, e.g. rotation) */
-            readonly assignedFrom?: null | {
-                userId?: string | null;
-                method: string;
-                /** Format: date-time */
-                at: string;
-            };
+            /** @description Lists: the latest move between owners (Manage Columns: Assigned From, Reassigned By, Reassigned At) */
+            readonly lastAssignment?: null | components["schemas"]["LastAssignment"];
             closeReasonId?: string | null;
             /** @description Phone and email are masked for this user (Hide Lead Contact Info) */
             readonly contactHidden?: boolean;
@@ -6570,6 +6612,7 @@ export interface components {
              *       "fullName": "name",
              *       "phonePrimary": "mobile",
              *       "email": "email",
+             *       "city": "city",
              *       "project": "interested_in"
              *     }
              */
@@ -9132,6 +9175,34 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listLeadAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LeadAssignment"][];
+                    };
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

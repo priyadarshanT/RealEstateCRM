@@ -34,6 +34,14 @@ export function useInquiries(id: string) {
   });
 }
 
+/** Every move between owners, newest first (assigned from, to, by whom, when). */
+export function useAssignments(leadId: string) {
+  return useQuery({
+    queryKey: ['lead', leadId, 'assignments'],
+    queryFn: async () => unwrap(await api.GET('/leads/{id}/assignments', { params: { path: { id: leadId } } })).data,
+  });
+}
+
 export function useShares(id: string) {
   return useQuery({
     queryKey: ['lead', id, 'shares'],

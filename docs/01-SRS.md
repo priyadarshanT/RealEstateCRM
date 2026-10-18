@@ -42,7 +42,7 @@ Based on the developer requirements brief (29 September 2026), stakeholder feedb
 | 1 | Remove respond.io | WhatsApp connects directly to the official WhatsApp Business Platform (Meta). Section 5. |
 | 2 | Lead moves to another agent if not answered in a set time | New rule: not answered in 10 minutes (adjustable) → next agent in the team → after the whole team → Admin. Section 3. |
 | 3 | Portals and a general webhook | Property Finder, Bayut and Dubizzle added. One general webhook connects any other source (website, Google Sheets, Excel, other systems). Section 11. |
-| 4 | Remove Zoom and Calendly if costly | Replaced with free options: Google Meet / Microsoft Teams links and a booking page built into the CRM. Section 3. *To confirm.* |
+| 4 | Zoom and Calendly | **Kept** (stakeholder decision 18 October 2026). Each brokerage connects its own Zoom and Calendly accounts and pays for them. Google Meet / Microsoft Teams links and the CRM booking page stay as free options. Section 3. |
 | 5 | Share a lead with a secondary user | A lead can be shared with other users, with "view only" or "can edit" access. Section 2. *Access choice to confirm.* |
 | 6 | Repeat enquiry goes to the previous agent | A repeat enquiry is added to the existing lead and goes to the same agent with a "Re-enquired" notification. Duplicates tab removed. Section 2. *To confirm.* |
 | 7 | Team: manage users, team hierarchy, roles | Team menu has three parts: Manage users (incl. turning lead assignment on/off), Manage team, Roles and permissions (custom roles such as Sales, Basic, HR). Section 4. |
@@ -186,7 +186,7 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 6. After the last rotation, or when nobody is left, the rule's **fallback** takes the lead: the **Admin** (default), the Unassigned queue or a chosen user. They are notified, see the full history of who missed it and when, and can work the lead or assign it to anyone. A lead whose owner was chosen by hand has no timer.
 7. Each move is logged with the reason "No response from agent", and the agent who missed it is told.
 
-**Meetings and viewings (no Zoom or Calendly subscription needed)**
+**Meetings and viewings**
 
 8. Online meetings use **Google Meet or Microsoft Teams** links, created from the agent's connected Google or Microsoft account at no extra cost.
 9. Each agent has a **booking page built into the CRM**. Clients pick a free slot; the meeting, link and confirmation are created automatically. Bookings, changes and cancellations update the lead.
@@ -194,11 +194,13 @@ Our own team (the platform team) uses a separate **owner console** to run the bu
 11. An agent cannot be double-booked.
 12. Clients see times in their own time zone.
 13. Sync with Google Calendar or Microsoft 365.
+14. **Zoom** (stakeholder decision 18 October 2026): an agent connects their own Zoom account; Zoom meeting links are then created automatically for online meetings. Each brokerage pays for its own Zoom plan.
+15. **Calendly** (stakeholder decision 18 October 2026): the brokerage connects its Calendly account. Agents send their Calendly booking link from the lead (for example by WhatsApp), and bookings, changes and cancellations made in Calendly update the appointment on the lead. Each brokerage pays for its own Calendly plan.
 
 **Appointments from the Lead page (stakeholder update 17 October 2026)**
 
-14. A **Schedule** button on each Hot or Warm lead (in the list and on the lead page): appointment type (Call, Zoom / online meeting, Event, Property viewing), date and time, client time zone, duration, assigned agent, notes, and the place or meeting link (an agent can paste a Zoom link; an automatic Zoom link needs the Zoom integration, which comes later). No Schedule for Cold or Sale Done, and no new appointments for them from any other entry point.
-15. Choosing the Zoom Schedule or Viewing Schedule substatus opens the Schedule form for that date. Past times follow Enable Past Date Selection. Appointments can be rescheduled, cancelled or marked done; the history stays on the timeline.
+16. A **Schedule** button on each Hot or Warm lead (in the list and on the lead page): appointment type (Call, Zoom / online meeting, Event, Property viewing), date and time, client time zone, duration, assigned agent, notes, and the place or meeting link (an agent can paste a Zoom link, or one is created automatically from the agent's connected Zoom account). No Schedule for Cold or Sale Done, and no new appointments for them from any other entry point.
+17. Choosing the Zoom Schedule or Viewing Schedule substatus opens the Schedule form for that date. Past times follow Enable Past Date Selection. Appointments can be rescheduled, cancelled or marked done; the history stays on the timeline.
 16. Moving a lead to Cold or Sale Done shows its pending appointments and asks whether to keep or cancel them; nothing is cancelled silently.
 17. The lead list has a **Calendar View** (month, week, day) of follow-ups and appointments; an entry opens the lead; switching between list and calendar keeps the filters. The date range can filter on **Appointment Date** (the lead's next appointment).
 
@@ -461,7 +463,6 @@ The system is accepted when these pass on the test system:
 - Full accounting (ledger, VAT returns, bank reconciliation)
 - Publishing listings to property portals
 - Call recording
-- Zoom and Calendly (replaced by free Google Meet / Teams and the CRM booking page)
 - Automatic closing of leads
 
 ---

@@ -14,7 +14,7 @@ A multi-tenant CRM for Dubai real estate brokerages (B2B) and individual agents 
 | Technology plan and costs | `docs/pdf/CRM_Technology_Plan_and_Costs.pdf` |
 | Stakeholder files | `docs/stakeholders/` (original brief, SRS .docx, questionnaire) |
 | Coding standards | `docs/06-Coding-Standards.md` *(next)* |
-| Deployment | `docs/07-Deployment-Guide.md` *(next)* |
+| Deployment (AWS + Cloudflare) | `docs/07-Deployment-Guide.md` · `infra/terraform/` |
 
 ---
 

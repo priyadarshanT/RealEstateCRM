@@ -17,7 +17,8 @@ export function useCan(): (permission: string) => boolean {
   return (permission) => !!data?.permissions.includes(permission);
 }
 
+/** Signs out; with Cognito the answer names its logout page, which ends that session too and comes back. */
 export async function logout(): Promise<void> {
-  await fetch('/auth/logout', { method: 'POST' });
-  window.location.href = '/login';
+  const res = await fetch('/auth/logout', { method: 'POST' });
+  window.location.href = ((await res.json().catch(() => ({}))) as { redirect?: string }).redirect ?? '/login';
 }

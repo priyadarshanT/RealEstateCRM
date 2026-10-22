@@ -45,8 +45,9 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
           variant="outline"
           className="border-slate-600 bg-transparent text-slate-200 hover:bg-white/10"
           onClick={async () => {
-            await fetch('/auth/platform-login', { method: 'DELETE' });
-            window.location.href = '/console/login';
+            // With Cognito the answer names its logout page, which ends that session too and comes back.
+            const res = await fetch('/auth/platform-logout', { method: 'POST' });
+            window.location.href = ((await res.json().catch(() => ({}))) as { redirect?: string }).redirect ?? '/console/login';
           }}
         >
           Sign out

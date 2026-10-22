@@ -17,3 +17,7 @@ __pycache__/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Terraform variable files (keep the .example)
+*.tfvars
+.terraform.lock.hcl.bak

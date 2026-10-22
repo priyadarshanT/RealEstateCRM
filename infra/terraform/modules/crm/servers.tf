@@ -72,7 +72,8 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.server.name
   associate_public_ip_address = true
   user_data_replace_on_change = false
-  user_data = templatefile("${path.module}/templates/user-data.sh", {
+  # replace() strips Windows line endings in case the scripts were checked out on Windows.
+  user_data = replace(templatefile("${path.module}/templates/user-data.sh", {
     primary        = count.index == 0 ? "true" : "false"
     data_volume_id = !local.use_rds && count.index == 0 ? aws_ebs_volume.data[0].id : ""
     region         = data.aws_region.current.region
@@ -82,7 +83,7 @@ resource "aws_instance" "app" {
       environment = var.environment
       region      = data.aws_region.current.region
     })
-  })
+  }), "\r", "")
 
   metadata_options {
     http_tokens   = "required"

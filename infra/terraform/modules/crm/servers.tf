@@ -32,7 +32,7 @@ resource "aws_iam_role_policy" "server" {
     Version = "2012-10-17"
     Statement = [
       { Sid = "Images", Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*" },
-      { Sid = "PullImages", Effect = "Allow", Action = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"], Resource = [for r in aws_ecr_repository.app : r.arn] },
+      { Sid = "PullImages", Effect = "Allow", Action = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"], Resource = [for r in data.aws_ecr_repository.app : r.arn] },
       { Sid = "Files", Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = ["${aws_s3_bucket.files.arn}/*", "${aws_s3_bucket.backups.arn}/*"] },
       { Sid = "ListFiles", Effect = "Allow", Action = ["s3:ListBucket"], Resource = [aws_s3_bucket.files.arn, aws_s3_bucket.backups.arn] },
       { Sid = "Config", Effect = "Allow", Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"], Resource = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm}/*" },

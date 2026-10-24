@@ -174,6 +174,23 @@ To roll back, set `IMAGE_TAG` to the previous tag and run the deploy again. Migr
 | Backups | Starter: daily volume snapshots and a nightly database dump to the backups bucket. Launch: RDS automated backups. Kept for `backup_retention_days`. |
 | Grow to the launch size | Set `size = "launch"` in `production.tfvars` and `terraform apply`. Plan a maintenance window: the database moves from the server volume to RDS (restore the latest dump into RDS before switching). |
 
+## Running on the AWS Free plan (until 2027-04-24)
+
+The account is on the AWS Free plan: USD 140 of credits (October 2026), valid 6 months. AWS does not charge the card on this plan; when the credits run out the account stops. Target: stay below USD 20 a month.
+
+| Item | Monthly cost (about) | Notes |
+|---|---|---|
+| 1 server t4g.small, standard CPU credits | USD 12.5 | `standard` means a busy server slows down instead of adding charges |
+| Disks (10 GB system + 20 GB database), daily snapshots | USD 3.5 | |
+| Public IPv4 address | USD 3.7 | Needed for outbound traffic (no NAT gateway) |
+| S3, ECR, CloudWatch, SSM, SNS, Lambda, Cognito | under USD 1 | Within the always-free limits at this size |
+| GitHub Actions | 0 | Public repository: free minutes and arm64 runners |
+| Cloudflare Tunnel and DNS | 0 | Free plan |
+
+Kept off on purpose, to save credits: staging server (the `staging` branch runs CI only), second server and RDS (`launch` size), NAT gateway. Turn them on only after leaving the Free plan.
+
+Rules: budget alert at USD 20 a month (emails at 80% actual and 100% forecast); check *Billing → Free plan* for the remaining credits once a month. Four more AWS "explore" activities give USD 20 each (Lambda web app, Bedrock playground, RDS database: delete it right after).
+
 ## Known gaps
 
 | Gap | Effect | Plan |

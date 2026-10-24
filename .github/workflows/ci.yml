@@ -56,11 +56,14 @@ jobs:
       - name: Database roles with test passwords (the migrations create them without passwords)
         env:
           PGPASSWORD: postgres
+        # Same attributes as migration 0001: the worker and the owner console bypass row-level security.
         run: |
-          for r in crm_app crm_worker crm_platform crm_readonly; do
-            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -qc "CREATE ROLE $r LOGIN PASSWORD 'test'"
-          done
-          psql -h localhost -U postgres -qc "CREATE DATABASE crm_dev"
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q \
+            -c "CREATE ROLE crm_app LOGIN PASSWORD 'test'" \
+            -c "CREATE ROLE crm_worker LOGIN BYPASSRLS PASSWORD 'test'" \
+            -c "CREATE ROLE crm_platform LOGIN BYPASSRLS PASSWORD 'test'" \
+            -c "CREATE ROLE crm_readonly LOGIN PASSWORD 'test'" \
+            -c "CREATE DATABASE crm_dev"
       - run: pnpm api:check
       - name: Database rule tests
         env:
@@ -72,9 +75,6 @@ jobs:
     name: API tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # 37 of 200 tests fail on develop today (billing, finance, inbound, meta, calendar, assignment-tasks).
-    # Reported, but not blocking a release until they are fixed; remove this line then.
-    continue-on-error: true
     services:
       postgres:
         image: postgres:16
@@ -93,9 +93,12 @@ jobs:
       - name: Database roles with test passwords (the migrations create them without passwords)
         env:
           PGPASSWORD: postgres
+        # Same attributes as migration 0001: the worker and the owner console bypass row-level security.
         run: |
-          for r in crm_app crm_worker crm_platform crm_readonly; do
-            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -qc "CREATE ROLE $r LOGIN PASSWORD 'test'"
-          done
-          psql -h localhost -U postgres -qc "CREATE DATABASE crm_dev"
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q \
+            -c "CREATE ROLE crm_app LOGIN PASSWORD 'test'" \
+            -c "CREATE ROLE crm_worker LOGIN BYPASSRLS PASSWORD 'test'" \
+            -c "CREATE ROLE crm_platform LOGIN BYPASSRLS PASSWORD 'test'" \
+            -c "CREATE ROLE crm_readonly LOGIN PASSWORD 'test'" \
+            -c "CREATE DATABASE crm_dev"
       - run: pnpm test

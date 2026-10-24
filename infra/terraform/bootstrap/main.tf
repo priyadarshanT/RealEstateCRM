@@ -12,7 +12,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "me-central-1"
+  region = "eu-north-1"
 }
 
 data "aws_caller_identity" "current" {}
@@ -88,5 +88,5 @@ output "state_bucket" {
 }
 
 output "ecr_registry" {
-  value = "${data.aws_caller_identity.current.account_id}.dkr.ecr.me-central-1.amazonaws.com"
+  value = "${data.aws_caller_identity.current.account_id}.dkr.ecr.eu-north-1.amazonaws.com"
 }

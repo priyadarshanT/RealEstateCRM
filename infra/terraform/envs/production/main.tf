@@ -8,7 +8,7 @@ terraform {
   required_version = ">= 1.10"
   backend "s3" {
     key          = "production/terraform.tfstate"
-    region       = "me-central-1"
+    region       = "eu-north-1"
     use_lockfile = true
     encrypt      = true
   }
@@ -18,7 +18,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "me-central-1"
+  region = "eu-north-1"
   default_tags {
     tags = { Project = "crm" }
   }

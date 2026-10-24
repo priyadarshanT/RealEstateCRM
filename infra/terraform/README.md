@@ -1,6 +1,6 @@
 # Infrastructure (Terraform)
 
-AWS me-central-1 (UAE) with Cloudflare in front. Two sizes from the same code:
+AWS eu-north-1 (Stockholm) with Cloudflare in front. The account is on the AWS Free plan, which only allows eu-north-1; move to me-central-1 (UAE) after leaving the Free plan. Two sizes from the same code:
 
 | Size | What runs | About |
 |---|---|---|

@@ -1,4 +1,4 @@
-# Deployment Guide · AWS (me-central-1) + Cloudflare
+# Deployment Guide · AWS (eu-north-1) + Cloudflare
 
 How to put the CRM on AWS for the first time and release new versions. The infrastructure is in `infra/terraform/` (see its README for what each size creates and costs); the images are built from `docker/`.
 
@@ -10,7 +10,7 @@ Commands work in PowerShell on Windows and in bash. Replace values in `<angle br
 
 | Item | Why |
 |---|---|
-| AWS account with billing, region **me-central-1 (UAE)** enabled | Everything runs there |
+| AWS account (Free plan: region **eu-north-1, Stockholm**, is the only one allowed) | Everything runs there. Move to me-central-1 (UAE) after leaving the Free plan. |
 | An IAM user or SSO role with admin rights, and the **AWS CLI v2** signed in to it (`aws sts get-caller-identity` works) | Terraform and the commands below use it |
 | **Terraform 1.10 or newer** | `terraform version` |
 | **Docker Desktop** with `buildx` | Builds the images (the servers are arm64 / Graviton) |
@@ -76,7 +76,7 @@ The server has no open ports. Cloudflare Tunnel connects it to your domain.
 2. Copy the **token** shown in the install command (the long string after `--token`). Do not install anything; the server runs `cloudflared` itself.
 3. Put the token in SSM:
    ```powershell
-   aws ssm put-parameter --region me-central-1 --name /crm/production/deploy/CLOUDFLARE_TUNNEL_TOKEN --type SecureString --overwrite --value "<token>"
+   aws ssm put-parameter --region eu-north-1 --name /crm/production/deploy/CLOUDFLARE_TUNNEL_TOKEN --type SecureString --overwrite --value "<token>"
    ```
 4. In the tunnel → **Public Hostname → Add** the two routes from the `tunnel_routes` output:
 
@@ -94,19 +94,19 @@ From the repository root (`develop` or the branch being released):
 ```powershell
 $REG = "<ecr_registry output>"          # bash: REG=...
 $TAG = git rev-parse --short HEAD       # bash: TAG=$(git rev-parse --short HEAD)
-aws ecr get-login-password --region me-central-1 | docker login --username AWS --password-stdin $REG
+aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin $REG
 docker buildx build --platform linux/arm64 -f docker/api.Dockerfile -t "$REG/crm/api:$TAG" --push .
 docker buildx build --platform linux/arm64 -f docker/web.Dockerfile -t "$REG/crm/web:$TAG" --push .
-aws ssm put-parameter --region me-central-1 --name /crm/production/deploy/IMAGE_TAG --type String --overwrite --value $TAG
+aws ssm put-parameter --region eu-north-1 --name /crm/production/deploy/IMAGE_TAG --type String --overwrite --value $TAG
 ```
 
 Run the deploy on the server (pulls the images, runs the database migrations, starts api, worker, web, Gotenberg and cloudflared):
 
 ```powershell
-aws ssm send-command --region me-central-1 --instance-ids <instance id> --document-name AWS-RunShellScript --parameters 'commands=["/opt/crm/deploy.sh"]'
+aws ssm send-command --region eu-north-1 --instance-ids <instance id> --document-name AWS-RunShellScript --parameters 'commands=["/opt/crm/deploy.sh"]'
 ```
 
-Or interactively: `aws ssm start-session --region me-central-1 --target <instance id>`, then `sudo /opt/crm/deploy.sh`. It ends with `deployed <tag>`.
+Or interactively: `aws ssm start-session --region eu-north-1 --target <instance id>`, then `sudo /opt/crm/deploy.sh`. It ends with `deployed <tag>`.
 
 Check: `https://crm.example.ae/login` opens the Cognito sign-in page, and `https://api.crm.example.ae/health` answers `{"status":"ok"}`.
 
@@ -122,7 +122,7 @@ Until production access is granted, SES only delivers to addresses you verified 
 Terraform creates these as `unset`; the app runs without them, and the related feature reports that it is not configured.
 
 ```powershell
-aws ssm put-parameter --region me-central-1 --name /crm/production/api/<NAME> --type SecureString --overwrite --value "<value>"
+aws ssm put-parameter --region eu-north-1 --name /crm/production/api/<NAME> --type SecureString --overwrite --value "<value>"
 ```
 
 | `<NAME>` | From | Needed for |
@@ -145,7 +145,7 @@ The owner console (`https://crm.example.ae/console`) is for our team only, with 
    ```
 2. Create your login in the **platform** pool (`cognito_user_pool_ids.platform`):
    ```powershell
-   aws cognito-idp admin-create-user --region me-central-1 --user-pool-id <platform pool id> --username you@example.ae --user-attributes Name=email,Value=you@example.ae Name=email_verified,Value=true
+   aws cognito-idp admin-create-user --region eu-north-1 --user-pool-id <platform pool id> --username you@example.ae --user-attributes Name=email,Value=you@example.ae Name=email_verified,Value=true
    ```
    Cognito emails a temporary password (SES must be out of the sandbox, or your address verified in SES).
 3. Open `https://crm.example.ae/console`: sign in, set a new password and set up the authenticator app (two-factor is always on for the owner console). The first sign-in links your login to the `platform_admins` row by email.
@@ -168,7 +168,7 @@ To roll back, set `IMAGE_TAG` to the previous tag and run the deploy again. Migr
 
 | Task | How |
 |---|---|
-| Shell on a server | `aws ssm start-session --region me-central-1 --target <instance id>` |
+| Shell on a server | `aws ssm start-session --region eu-north-1 --target <instance id>` |
 | Logs | CloudWatch → Log groups → the app group (one stream per container) |
 | Change a setting | `aws ssm put-parameter … --overwrite`, then run the deploy |
 | Backups | Starter: daily volume snapshots and a nightly database dump to the backups bucket. Launch: RDS automated backups. Kept for `backup_retention_days`. |

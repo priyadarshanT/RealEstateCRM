@@ -163,6 +163,50 @@ describe('inbound webhooks', () => {
     });
   });
 
+  describe('Google Ads lead forms (SRS §11)', () => {
+    const KEY = 'google-ads-form-key-123';
+    let googleId: string;
+    const googleLead = (body: object) => request(server()).post('/api/v1/webhooks/google-ads').send(body);
+    const lead = (leadId: string, name: string, phone: string, key: string = KEY) => ({
+      lead_id: leadId,
+      api_version: '1.0',
+      form_id: 4401,
+      campaign_id: 9901,
+      google_key: key,
+      is_test: false,
+      user_column_data: [
+        { column_name: 'Full Name', string_value: name, column_id: 'FULL_NAME' },
+        { column_name: 'User Phone', string_value: phone, column_id: 'PHONE_NUMBER' },
+        { column_name: 'User Email', string_value: 'ga@example.ae', column_id: 'EMAIL' },
+        { column_name: 'Preferred community', string_value: 'Dubai Hills' },
+      ],
+    });
+
+    it('connects with the form key as shared secret and shows the webhook URL for Google Ads', async () => {
+      googleId = (await admin.post('/api/v1/integrations').send({ provider: 'google_ads', settings: { sharedSecret: KEY } }).expect(201)).body.integrationId;
+      const row = (await admin.get(`/api/v1/integrations/${googleId}`).expect(200)).body;
+      expect(row).toMatchObject({ provider: 'google_ads', status: 'connected', accountLabel: 'Google Ads lead forms', settings: { webhookUrl: 'http://localhost:4000/api/v1/webhooks/google-ads' } });
+      const stored = await ownerQuery<{ settings: string }>(`SELECT settings::text FROM integrations WHERE id = $1`, [googleId]);
+      expect(stored[0]!.settings).not.toContain(KEY);
+    });
+
+    it('a lead with the right key becomes a lead under the Google Ads source; the key is not stored; repeats are stored once', async () => {
+      await googleLead(lead('GA-1', 'Google Buyer', '+971507009901', 'wrong-key-wrong-key')).expect(401);
+      await googleLead({ lead_id: 'GA-1' }).expect(401);
+      await googleLead(lead('GA-1', 'Google Buyer', '+971507009901')).expect(200);
+      await googleLead(lead('GA-1', 'Google Buyer', '+971507009901')).expect(200);
+      await queue.drain('lead-intake');
+      const [found] = await leadNamed('Google Buyer');
+      expect(found).toMatchObject({ phonePrimary: '+971507009901', email: 'ga@example.ae' });
+      const source = await ownerQuery<{ name: string; type: string }>(`SELECT name, type FROM lead_sources WHERE id = $1`, [found!.sourceId]);
+      expect(source[0]).toEqual({ name: 'Google Ads lead forms', type: 'google_ads' });
+      const events = await ownerQuery<{ payload: string }>(`SELECT payload::text FROM webhook_events WHERE external_event_id = $1`, [`${googleId}:GA-1`]);
+      expect(events).toHaveLength(1);
+      expect(events[0]!.payload).not.toContain(KEY);
+      expect(events[0]!.payload).toContain('Preferred community');
+    });
+  });
+
   describe('portal lead emails (SES → SNS)', () => {
     const sns = (message: object, type = 'Notification') => ({
       Type: type,

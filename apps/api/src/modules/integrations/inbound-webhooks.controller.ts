@@ -5,6 +5,7 @@ import { Public } from '../../core/auth/decorators';
 import { Problems } from '../../core/errors/problem';
 import { SNS_VERIFIER, SnsMessage, SnsVerifier } from './adapters/sns-verifier';
 import { FieldMapping, mapFields } from './inbox/field-mapping';
+import { readGoogleAdsLead } from './inbox/google-ads-lead';
 import { EMAIL_EVENT_PROVIDER } from './inbox/incoming-lead-intake';
 import { readLeadEmail } from './inbox/lead-email';
 import { rawBodyOf, sha256, validHmac, WebhookAck, WebhookInbox } from './inbox/webhook-inbox';
@@ -14,7 +15,8 @@ import { IntegrationsService, PORTAL_PROVIDERS } from './integrations.service';
 type Raw = Request & { rawBody?: Buffer };
 
 /**
- * Leads pushed by other systems (SRS §11.1–11.2): the general webhook, property portals and portal lead emails.
+ * Leads pushed by other systems (SRS §11.1–11.2): the general webhook, property portals, portal lead emails and
+ * Google Ads lead forms.
  * Each request is checked, stored and answered at once; the lead-intake job maps it into a lead.
  */
 @ApiTags('Webhooks (inbound)')
@@ -55,6 +57,21 @@ export class InboundWebhooksController {
     const integration = secret ? await this.inbox.accountBySetting([provider as (typeof PORTAL_PROVIDERS)[number]], 'secretHash', sha256(secret)) : undefined;
     if (!integration) throw Problems.unauthorized('Unknown or missing shared secret.');
     await this.storeLead(provider, integration, objectBody(req.body), await rawBodyOf(req));
+    return { received: true };
+  }
+
+  /** Google Ads lead form extensions: the form's webhook key (google_key in the body) identifies the account. */
+  @Post('google-ads')
+  @HttpCode(200)
+  @ApiOperation({ operationId: 'receiveGoogleAdsLead', summary: 'Receive Google Ads lead form lead' })
+  @ApiOkResponse({ type: WebhookAck })
+  async googleAds(@Req() req: Raw): Promise<WebhookAck> {
+    const body = objectBody(req.body);
+    const key = typeof body.google_key === 'string' ? body.google_key.trim() : '';
+    const integration = key ? await this.inbox.accountBySetting(['google_ads'], 'secretHash', sha256(key)) : undefined;
+    if (!integration) throw Problems.unauthorized('Unknown or missing google_key.');
+    const lead = readGoogleAdsLead(body);
+    await this.storeLead('google_ads', integration, lead, await rawBodyOf(req), lead.lead_id as string | undefined);
     return { received: true };
   }
 

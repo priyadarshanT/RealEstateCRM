@@ -10,8 +10,9 @@ import { FieldMapping, mapFields } from './field-mapping';
 import { InboxJob, PermanentEventError, WebhookInbox } from './webhook-inbox';
 
 /** Lead source used when the connection has none chosen (created on first use). */
-const SOURCE_FOR: Partial<Record<Provider, { type: 'meta' | 'webhook' | 'website' | 'property_finder' | 'bayut' | 'dubizzle'; name: string; qualityScore: number }>> = {
+const SOURCE_FOR: Partial<Record<Provider, { type: 'meta' | 'google_ads' | 'webhook' | 'website' | 'property_finder' | 'bayut' | 'dubizzle'; name: string; qualityScore: number }>> = {
   meta: { type: 'meta', name: 'Meta lead ads', qualityScore: 60 },
+  google_ads: { type: 'google_ads', name: 'Google Ads lead forms', qualityScore: 60 },
   webhook: { type: 'webhook', name: 'General webhook', qualityScore: 50 },
   website: { type: 'website', name: 'Website', qualityScore: 60 },
   property_finder: { type: 'property_finder', name: 'Property Finder', qualityScore: 60 },
@@ -79,7 +80,7 @@ export class IncomingLeadIntake implements OnModuleInit {
     };
   }
 
-  /** General webhook, portals and portal lead emails: the connection's field mapping, then common names. */
+  /** General webhook, portals, portal lead emails and Google Ads: the connection's field mapping, then common names. */
   private async fromPayload(event: WebhookEventRow, integration: IntegrationRow): Promise<IntakeInput> {
     const fields = event.provider === EMAIL_EVENT_PROVIDER ? ((event.payload.fields as Record<string, unknown>) ?? {}) : event.payload;
     const m = mapFields(fields, (integration.settings.fieldMapping as FieldMapping | undefined) ?? {});

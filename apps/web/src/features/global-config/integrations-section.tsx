@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { api, errorMessage, unwrap } from '@/core/api';
 import { formatDateTime } from '@/core/format';
 import { INTEGRATION_TABS, INTEGRATIONS, type IntegrationCard } from './catalog';
+import { ConnectGoogleAdsDialog } from './connect-google-ads-dialog';
 import { ConnectPortalDialog, type Portal } from './connect-portal-dialog';
 import { ConnectSenderDialog } from './connect-sender-dialog';
 import { GeneralWebhookDialog } from './general-webhook-dialog';
@@ -155,6 +156,7 @@ export function IntegrationTile({ card, rows }: { card: IntegrationCard; rows: I
         <GeneralWebhookDialog open={connectOpen} existing={null} onClose={() => setConnectOpen(false)} />
       ) : null}
       {card.connect === 'portal' ? <ConnectPortalDialog open={connectOpen} initial={card.key as Portal} onClose={() => setConnectOpen(false)} /> : null}
+      {card.connect === 'google_ads' ? <ConnectGoogleAdsDialog open={connectOpen} onClose={() => setConnectOpen(false)} /> : null}
       {card.connect === 'whatsapp' || card.connect === 'email' ? (
         <ConnectSenderDialog provider={connectOpen ? (card.connect === 'whatsapp' ? 'whatsapp_cloud' : 'email_ses') : null} onClose={() => setConnectOpen(false)} />
       ) : null}

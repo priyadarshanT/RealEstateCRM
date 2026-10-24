@@ -53,7 +53,7 @@ export const MODULES: ModuleCard[] = [
   { key: 'dev', title: 'Dev Resources', description: 'API credentials and developer tools', icon: Code2, tone: 'bg-gray-100 text-gray-700' },
 ];
 
-export type ConnectKind = 'webhook' | 'website' | 'portal' | 'whatsapp' | 'meta' | 'email';
+export type ConnectKind = 'webhook' | 'website' | 'portal' | 'whatsapp' | 'meta' | 'email' | 'google_ads';
 
 export interface IntegrationCard {
   key: string;
@@ -85,7 +85,7 @@ export const INTEGRATIONS: IntegrationCard[] = [
   { key: 'facebook', name: 'Facebook', description: 'Meta lead ads (Facebook and Instagram)', tab: 'social', mark: 'f', tone: 'bg-blue-700 text-white', providers: ['meta'], connect: 'meta' },
   { key: 'gmail', name: 'Gmail', description: 'Send and receive email with Gmail', tab: 'others', mark: 'GM', tone: 'bg-red-500 text-white', providers: ['gmail'] },
   { key: 'google_ads_landing', name: 'Google Ads Landing Page', description: 'Leads from your landing page form', tab: 'others', mark: 'LP', tone: 'bg-amber-500 text-white', providers: ['website'], connect: 'website' },
-  { key: 'google_ads_form', name: 'Google Ads Lead Form', description: 'Leads from Google Ads lead form extensions', tab: 'others', mark: 'GA', tone: 'bg-yellow-500 text-white', providers: ['google_ads'] },
+  { key: 'google_ads_form', name: 'Google Ads Lead Form', description: 'Leads from Google Ads lead form extensions', tab: 'others', mark: 'GA', tone: 'bg-yellow-500 text-white', providers: ['google_ads'], connect: 'google_ads' },
   { key: 'google_campaign', name: 'Google Campaign', description: 'Campaign results and spend from Google Ads', tab: 'others', mark: 'GC', tone: 'bg-sky-500 text-white', providers: [] },
   { key: 'microsoft_ads', name: 'Microsoft Ads', description: 'Leads and spend from Microsoft Advertising', tab: 'others', mark: 'MS', tone: 'bg-cyan-600 text-white', providers: [] },
 ];

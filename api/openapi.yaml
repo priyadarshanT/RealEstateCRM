@@ -9225,6 +9225,34 @@ paths:
         '429':
           $ref: '#/components/responses/TooMany'
       security: []
+  /webhooks/google-ads:
+    post:
+      tags:
+      - Webhooks (inbound)
+      summary: Receive Google Ads lead form lead
+      operationId: receiveGoogleAdsLead
+      description: 'Google Ads lead form extension webhook. The body''s google_key must match the key set when connecting Google Ads lead forms; it is not stored with the lead.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooMany'
+      security: []
   /webhooks/inbound/{token}:
     post:
       tags:

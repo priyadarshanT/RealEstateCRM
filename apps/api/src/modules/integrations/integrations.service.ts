@@ -111,7 +111,9 @@ const OAUTH_PROVIDERS: Provider[] = ['meta'];
 const KEY_PROVIDERS: Provider[] = ['whatsapp_cloud', 'email_ses'];
 /** Property portals (SRS §11.1): leads by webhook (shared secret) or by lead email. */
 export const PORTAL_PROVIDERS = ['property_finder', 'bayut', 'dubizzle'] as const;
-const PORTAL_NAME: Record<(typeof PORTAL_PROVIDERS)[number], string> = { property_finder: 'Property Finder', bayut: 'Bayut', dubizzle: 'Dubizzle' };
+/** Portals and Google Ads lead forms: leads pushed with a shared secret agreed when connecting. */
+type SharedSecretProvider = (typeof PORTAL_PROVIDERS)[number] | 'google_ads';
+const SHARED_SECRET_NAME: Record<SharedSecretProvider, string> = { property_finder: 'Property Finder', bayut: 'Bayut', dubizzle: 'Dubizzle', google_ads: 'Google Ads lead forms' };
 const SERVER_SETTINGS = ['pageId', 'secretHash', 'webhookUrl', 'inboundUrl', 'watchChannelId', 'watchToken', 'subscriptionId', 'syncCursor'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -157,7 +159,7 @@ export class IntegrationsService {
   /** Starts a connection. OAuth providers return the URL to open; the callback finishes it. */
   async connect(p: Principal, body: IntegrationConnectDto): Promise<ConnectStartDto> {
     if (KEY_PROVIDERS.includes(body.provider)) return this.connectKeyBased(p, body);
-    if ((PORTAL_PROVIDERS as readonly string[]).includes(body.provider)) return this.connectPortal(p, body);
+    if ((PORTAL_PROVIDERS as readonly string[]).includes(body.provider) || body.provider === 'google_ads') return this.connectPortal(p, body);
     if (body.provider === 'webhook' || body.provider === 'website') {
       throw Problems.validation([{ field: 'provider', message: 'create a general webhook instead (POST /webhook-sources)' }]);
     }
@@ -242,14 +244,17 @@ export class IntegrationsService {
   /**
    * Property Finder, Bayut or Dubizzle (SRS §11.1). The portal posts leads to /webhooks/portals/{provider} with
    * the shared secret agreed for the account ("Authorization: Bearer <secret>"), or emails them to the inbound
-   * address. The secret goes to the secret store; only its hash (to find the account) is kept in settings.
+   * address. Google Ads lead forms post to /webhooks/google-ads with the secret as the form's webhook key.
+   * The secret goes to the secret store; only its hash (to find the account) is kept in settings.
    */
   private async connectPortal(p: Principal, body: IntegrationConnectDto): Promise<ConnectStartDto> {
-    const provider = body.provider as (typeof PORTAL_PROVIDERS)[number];
+    const provider = body.provider as SharedSecretProvider;
+    const google = provider === 'google_ads';
+    const family: Provider[] = google ? ['google_ads'] : [...PORTAL_PROVIDERS];
     const input = body.settings ?? {};
     const str = (k: string) => (typeof input[k] === 'string' && (input[k] as string).trim() ? (input[k] as string).trim() : undefined);
     const sharedSecret = str('sharedSecret');
-    const inboundEmail = str('inboundEmail')?.toLowerCase();
+    const inboundEmail = google ? undefined : str('inboundEmail')?.toLowerCase();
     const sourceId = str('sourceId');
     const mapping = input.fieldMapping;
     const errors = [
@@ -267,7 +272,7 @@ export class IntegrationsService {
       .where(and(eq(integrations.provider, provider), eq(integrations.externalAccountId, externalAccountId), eq(integrations.scope, 'tenant')))
       .limit(1);
     for (const [key, value] of [['secretHash', secretHash], ...(inboundEmail ? [['inboundEmail', inboundEmail]] : [])] as [string, string][]) {
-      const taken = await this.inbox.accountBySetting([...PORTAL_PROVIDERS], key, value);
+      const taken = await this.inbox.accountBySetting(family, key, value);
       if (taken && taken.id !== existing?.id) {
         throw new ProblemException(409, 'CONFLICT', 'Already in use', key === 'inboundEmail' ? 'This inbound email address is used by another connection.' : 'Choose a different shared secret.');
       }
@@ -278,9 +283,9 @@ export class IntegrationsService {
       ...(inboundEmail ? { inboundEmail } : {}),
       ...(sourceId ? { sourceId } : {}),
       ...(mapping ? { fieldMapping: mapping } : {}),
-      webhookUrl: `${this.config.PUBLIC_API_URL}/api/v1/webhooks/portals/${provider}`,
+      webhookUrl: `${this.config.PUBLIC_API_URL}/api/v1/webhooks/${google ? 'google-ads' : `portals/${provider}`}`,
     };
-    const values = { status: 'connected' as const, accountLabel: body.accountLabel ?? PORTAL_NAME[provider], settings, connectedBy: p.userId, connectedAt: new Date(), lastError: null, updatedAt: new Date() };
+    const values = { status: 'connected' as const, accountLabel: body.accountLabel ?? SHARED_SECRET_NAME[provider], settings, connectedBy: p.userId, connectedAt: new Date(), lastError: null, updatedAt: new Date() };
     const [row] = existing
       ? await this.db.current.update(integrations).set(values).where(eq(integrations.id, existing.id)).returning()
       : await this.db.current.insert(integrations).values({ tenantId: p.tenantId, provider, scope: 'tenant', externalAccountId, ...values }).returning();

@@ -36,7 +36,7 @@ jobs:
       name: production
       url: https://crm.leadkeeda.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Image tag (source tree hash, so an unchanged tree is not rebuilt)
         id: tag

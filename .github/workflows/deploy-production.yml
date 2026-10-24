@@ -92,7 +92,7 @@ jobs:
       - name: Health check
         run: |
           for i in $(seq 1 18); do
-            if curl -fsS https://api.crm.leadkeeda.com/health; then echo; exit 0; fi
+            if curl -fsS https://api.leadkeeda.com/health; then echo; exit 0; fi
             sleep 10
           done
-          echo "::warning::https://api.crm.leadkeeda.com/health did not answer (Cloudflare Tunnel not set up yet?)"
+          echo "::warning::https://api.leadkeeda.com/health did not answer (Cloudflare Tunnel not set up yet?)"

@@ -14,3 +14,8 @@ export function apiUrl(): string {
 export function authMode(): 'dev' | 'cognito' {
   return process.env.AUTH_MODE === 'cognito' ? 'cognito' : 'dev';
 }
+
+/** Cloudflare Turnstile site key (public) for the bot check on the public forms; unset locally. */
+export function turnstileSiteKey(): string | undefined {
+  return process.env.TURNSTILE_SITE_KEY || undefined;
+}

@@ -128,6 +128,7 @@ aws ssm put-parameter --region eu-north-1 --name /crm/production/api/<NAME> --ty
 | `<NAME>` | From | Needed for |
 |---|---|---|
 | `TURNSTILE_SECRET` | Cloudflare → Turnstile (site for `crm.example.ae`) | Public sign-up (required in production) |
+| `TURNSTILE_SITE_KEY` (under `/crm/production/web/`, type String) | Same Turnstile widget: its site key | Shows the bot check on sign-up, Talk to sales and the booking page |
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` | Stripe → Developers → API keys | Sign-up, billing |
 | `STRIPE_WEBHOOK_SECRET` | Stripe → Webhooks → endpoint `https://api.crm.example.ae/api/v1/webhooks/stripe` | Payment events |
 | `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN` | Meta for Developers app | Lead ads, WhatsApp |

@@ -52,6 +52,8 @@ locals {
   }
   # Set by hand once the outside accounts exist (aws ssm put-parameter ... --overwrite).
   api_manual = ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "TURNSTILE_SECRET", "META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"]
+  # Public, but set by hand with its secret: the Cloudflare Turnstile widget's site key.
+  web_manual = ["TURNSTILE_SITE_KEY"]
 
   web_config = {
     API_URL                    = "http://api:4000"
@@ -91,6 +93,17 @@ resource "aws_ssm_parameter" "api_manual" {
   for_each = toset(local.api_manual)
   name     = "${local.ssm}/api/${each.key}"
   type     = "SecureString"
+  value    = "unset"
+  tags     = local.tags
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "web_manual" {
+  for_each = toset(local.web_manual)
+  name     = "${local.ssm}/web/${each.key}"
+  type     = "String"
   value    = "unset"
   tags     = local.tags
   lifecycle {

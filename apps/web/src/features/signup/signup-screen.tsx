@@ -7,6 +7,7 @@ import { Check } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { api, ApiError, errorMessage, unwrap } from '@/core/api';
 import { formatDate, formatMoney } from '@/core/format';
+import { useTurnstile } from '@/core/turnstile';
 import { CardStep } from './card-step';
 
 type Plan = Schemas['Plan'];
@@ -24,7 +25,7 @@ const VAT = 0.05;
  * Public sign-up and 14-day free trial (SRS §12, wireframe "Sign-up and free trial").
  * The bot check token comes from Cloudflare Turnstile in AWS; locally the API's dev bot check accepts any token.
  */
-export function SignupScreen() {
+export function SignupScreen({ turnstileSiteKey }: { turnstileSiteKey?: string }) {
   const plans = useQuery({ queryKey: ['plans'], queryFn: async () => unwrap(await api.GET('/public/plans')).data });
   const [step, setStep] = useState<Step>('company');
   const [planKey, setPlanKey] = useState('team');
@@ -35,6 +36,7 @@ export function SignupScreen() {
   const [done, setDone] = useState<Schemas['SignupComplete'] | null>(null);
   const [code, setCode] = useState('');
   const [accepted, setAccepted] = useState(false);
+  const botCheck = useTurnstile(turnstileSiteKey);
 
   const plan = plans.data?.find((p) => p.key === planKey);
   const enterprise = plan && !plan.selfService;
@@ -55,10 +57,11 @@ export function SignupScreen() {
             seats: users,
             billingCycle: cycle,
             acceptTerms: true,
-            turnstileToken: 'dev-local',
+            turnstileToken: botCheck.token!,
           },
         }),
       ),
+    onSettled: () => botCheck.reset(),
     onSuccess: (s) => {
       setSignup(s);
       setStep(s.emailVerified ? 'card' : 'verify');
@@ -161,7 +164,7 @@ export function SignupScreen() {
 
           <section className="rounded-lg border border-border p-4">
             {enterprise ? (
-              <SalesEnquiryForm />
+              <SalesEnquiryForm turnstileSiteKey={turnstileSiteKey} />
             ) : step === 'company' ? (
               <form onSubmit={submitCompany} className="grid gap-3">
                 <p className="text-xs font-semibold uppercase text-muted-foreground">Your company</p>
@@ -199,9 +202,10 @@ export function SignupScreen() {
                   {individual ? 'Brokerages enter their trade licence and RERA ORN instead.' : 'Individual agents enter their RERA broker card number (BRN) instead.'} A card is needed to
                   start the trial; you are charged only after 14 days.
                 </p>
+                {botCheck.widget}
                 {start.error ? <Alert>{errorMessage(start.error)}</Alert> : null}
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={start.isPending}>
+                  <Button type="submit" disabled={start.isPending || !botCheck.token}>
                     {start.isPending ? 'Please wait…' : 'Continue'}
                   </Button>
                 </div>
@@ -260,10 +264,12 @@ export function SignupScreen() {
 }
 
 /** Enterprise: "Talk to sales" (SRS §12 Signing up 7). */
-function SalesEnquiryForm() {
+function SalesEnquiryForm({ turnstileSiteKey }: { turnstileSiteKey?: string }) {
   const [f, setF] = useState<Partial<Schemas['SalesEnquiry']>>({});
+  const botCheck = useTurnstile(turnstileSiteKey);
   const send = useMutation({
-    mutationFn: async () => unwrap(await api.POST('/public/sales-enquiries', { body: { ...(f as Schemas['SalesEnquiry']), turnstileToken: 'dev-local' } as Schemas['SalesEnquiry'] })),
+    mutationFn: async () => unwrap(await api.POST('/public/sales-enquiries', { body: { ...(f as Schemas['SalesEnquiry']), turnstileToken: botCheck.token! } as Schemas['SalesEnquiry'] })),
+    onSettled: () => botCheck.reset(),
   });
   if (send.isSuccess) return <Alert tone="success">Thank you. Our sales team will contact you shortly.</Alert>;
   return (
@@ -293,9 +299,10 @@ function SalesEnquiryForm() {
       <Field label="Message">
         <Textarea value={f.message ?? ''} onChange={(e) => setF({ ...f, message: e.target.value })} />
       </Field>
+      {botCheck.widget}
       {send.error ? <Alert>{errorMessage(send.error)}</Alert> : null}
       <div className="flex justify-end">
-        <Button type="submit" disabled={send.isPending}>
+        <Button type="submit" disabled={send.isPending || !botCheck.token}>
           Send
         </Button>
       </div>

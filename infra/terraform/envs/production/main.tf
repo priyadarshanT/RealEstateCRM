@@ -32,7 +32,7 @@ module "crm" {
   api_domain         = var.api_domain
   mail_domain        = var.mail_domain
   mail_from          = var.mail_from
-  alert_email        = var.alert_email
+  alert_emails       = var.alert_emails
   monthly_budget_usd = var.monthly_budget_usd
 }
 
@@ -44,7 +44,7 @@ variable "web_domain" { type = string }
 variable "api_domain" { type = string }
 variable "mail_domain" { type = string }
 variable "mail_from" { type = string }
-variable "alert_email" { type = string }
+variable "alert_emails" { type = list(string) }
 variable "monthly_budget_usd" {
   type    = number
   default = 25

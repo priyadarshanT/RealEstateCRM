@@ -44,7 +44,7 @@ Edit `production.tfvars`:
 | `web_domain` | `crm.example.ae` | Address users open |
 | `api_domain` | `api.crm.example.ae` | Webhooks (Meta, portals, Stripe) |
 | `mail_domain` / `mail_from` | `example.ae` / `Dubai Real Estate CRM <no-reply@example.ae>` | Sender of CRM emails |
-| `alert_email` | `it@example.ae` | Alarms and budget alerts |
+| `alert_emails` | `["it@example.ae"]` | Alarms and budget alerts; each address confirms the AWS email once |
 | `monthly_budget_usd` | `25` | Email at 80% / 100% of the budget |
 
 ## 3. Create the infrastructure
@@ -179,4 +179,5 @@ To roll back, set `IMAGE_TAG` to the previous tag and run the deploy again. Migr
 | Gap | Effect | Plan |
 |---|---|---|
 | **Team invites do not create Cognito logins yet.** Only sign-up and the owner console create a Cognito user (for a company's first Admin). Users added on Team → Add user, and users deactivated there, are not sent to Cognito. | On AWS, colleagues added by an Admin cannot sign in until it is fixed. | API change in the organization module (needs approval). |
+| **GitHub sign-in to AWS (OIDC) is blocked on the AWS Free plan.** The bootstrap step cannot create the GitHub OIDC provider. | The pipeline deploys with a long-lived deploy key stored as a GitHub secret, limited to pushing images and running the deploy. | After leaving the Free plan: create the OIDC provider (`terraform apply` in `bootstrap/`), switch the pipeline to OIDC, then delete the deploy key and its secret. Security requirement, do not skip. |
 | No CI/CD pipeline yet | Releases are built and deployed by hand (step 5). | GitHub Actions: tests on every push, image build and deploy on release. |

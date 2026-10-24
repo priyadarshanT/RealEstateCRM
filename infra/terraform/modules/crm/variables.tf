@@ -37,9 +37,9 @@ variable "mail_from" {
   type        = string
 }
 
-variable "alert_email" {
-  description = "Email address that receives alarms and budget alerts."
-  type        = string
+variable "alert_emails" {
+  description = "Email addresses that receive alarms and budget alerts."
+  type        = list(string)
 }
 
 variable "monthly_budget_usd" {

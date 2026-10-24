@@ -1,4 +1,4 @@
-# Alarms and spending alerts, emailed to var.alert_email (confirm the subscription email from AWS once).
+# Alarms and spending alerts, emailed to each address in var.alert_emails (each confirms the subscription email from AWS once).
 
 resource "aws_sns_topic" "alerts" {
   name = "${local.name}-alerts"
@@ -6,9 +6,10 @@ resource "aws_sns_topic" "alerts" {
 }
 
 resource "aws_sns_topic_subscription" "email" {
+  for_each  = toset(var.alert_emails)
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
-  endpoint  = var.alert_email
+  endpoint  = each.value
 }
 
 # If AWS hardware fails, move the server to healthy hardware automatically (same disks, same address).
@@ -69,7 +70,7 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 80
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_email_addresses = var.alert_emails
   }
 
   notification {
@@ -77,6 +78,6 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_email_addresses = var.alert_emails
   }
 }

@@ -6,6 +6,7 @@ import { CurrentPrincipal, Public, RequireAnyPermission, RequirePermission } fro
 import { Principal } from '../../core/auth/principal';
 import { PageQuery } from '../../core/http/pagination';
 import {
+  CalendarConnectDto,
   ConnectStartDto,
   IntegrationConnectDto,
   IntegrationDto,
@@ -118,6 +119,29 @@ export class IntegrationsController {
   @ApiResponse({ status: 202, type: WebhookEventDto })
   retryOne(@Param('id', ParseUUIDPipe) id: string): Promise<WebhookEventDto> {
     return this.integrations.retryOne(id);
+  }
+
+  /** The user's own calendars (SRS §3.8, §3.13): every user connects their own; no settings permission needed. */
+  @Get('me/calendars')
+  @ApiOperation({ operationId: 'listMyCalendars', summary: 'List my calendar connections' })
+  @ApiOkResponse({ type: IntegrationList })
+  async myCalendars(@CurrentPrincipal() p: Principal): Promise<IntegrationList> {
+    return { data: await this.integrations.myCalendars(p) };
+  }
+
+  @Post('me/calendars')
+  @ApiOperation({ operationId: 'connectMyCalendar', summary: 'Connect my calendar', description: 'Returns the Google or Microsoft consent screen URL to open.' })
+  @ApiCreatedResponse({ type: ConnectStartDto })
+  connectCalendar(@CurrentPrincipal() p: Principal, @Body() body: CalendarConnectDto): Promise<ConnectStartDto> {
+    return this.integrations.connectCalendar(p, body.provider);
+  }
+
+  @Delete('me/calendars/:id')
+  @HttpCode(204)
+  @ApiOperation({ operationId: 'disconnectMyCalendar', summary: 'Disconnect my calendar' })
+  @ApiNoContentResponse({ description: 'Done' })
+  disconnectCalendar(@CurrentPrincipal() p: Principal, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.integrations.disconnectCalendar(p, id);
   }
 
   @Get('oauth/:provider/callback')

@@ -152,7 +152,7 @@ export class MeetingsService {
           title,
           startsAt: m.startsAt,
           endsAt: m.endsAt,
-          ...(account ? { account: { settings: account.settings, credentials: await this.integrations.credentials(account) } } : {}),
+          ...(account ? { account: { settings: account.settings, credentials: await this.integrations.calendarCredentials(account) } } : {}),
         });
         joinUrl = link.joinUrl;
         externalMeetingId = link.externalMeetingId;

@@ -3414,6 +3414,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my calendar connections
+         * @description The signed-in user's own Google Workspace and Microsoft 365 calendars (Meet / Teams links and two-way sync). Any signed-in user.
+         */
+        get: operations["listMyCalendars"];
+        put?: never;
+        /**
+         * Connect my calendar
+         * @description Returns the Google or Microsoft consent screen URL to open. The provider returns to /oauth/{provider}/callback, which goes back to Tasks & Calendar. Connecting again keeps the current connection until the new consent finishes. 422 INTEGRATION_NOT_CONFIGURED when the server has no sign-in app for the provider.
+         */
+        post: operations["connectMyCalendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/calendars/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect my calendar */
+        delete: operations["disconnectMyCalendar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations": {
         parameters: {
             query?: never;
@@ -6611,6 +6652,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+        };
+        CalendarConnect: {
+            /** @enum {string} */
+            provider: "google_workspace" | "microsoft_365";
         };
         ConnectStart: {
             /** Format: uuid */
@@ -14196,6 +14241,81 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    listMyCalendars: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Integration"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    connectMyCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarConnect"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStart"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["Unprocessable"];
+            429: components["responses"]["TooMany"];
+        };
+    };
+    disconnectMyCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooMany"];
         };
     };

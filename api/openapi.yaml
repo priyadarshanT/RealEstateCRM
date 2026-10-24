@@ -8409,6 +8409,80 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooMany'
+  /me/calendars:
+    get:
+      tags:
+      - Integrations
+      summary: List my calendar connections
+      operationId: listMyCalendars
+      description: The signed-in user's own Google Workspace and Microsoft 365 calendars (Meet / Teams links and two-way sync). Any signed-in user.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Integration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooMany'
+    post:
+      tags:
+      - Integrations
+      summary: Connect my calendar
+      operationId: connectMyCalendar
+      description: Returns the Google or Microsoft consent screen URL to open. The provider returns to /oauth/{provider}/callback,
+        which goes back to Tasks & Calendar. Connecting again keeps the current connection until the new consent finishes.
+        422 INTEGRATION_NOT_CONFIGURED when the server has no sign-in app for the provider.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarConnect'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectStart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooMany'
+  /me/calendars/{id}:
+    delete:
+      tags:
+      - Integrations
+      summary: Disconnect my calendar
+      operationId: disconnectMyCalendar
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: Done
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooMany'
   /integrations:
     get:
       tags:
@@ -15505,6 +15579,16 @@ components:
         settings:
           type: object
           additionalProperties: true
+      required:
+      - provider
+    CalendarConnect:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+          - google_workspace
+          - microsoft_365
       required:
       - provider
     ConnectStart:

@@ -70,6 +70,22 @@ export class WebhookInbox {
     return row;
   }
 
+  /** Every connected account of these providers, in all tenants (scheduled jobs such as the calendar check). */
+  connectedAccounts(providers: Provider[]): Promise<IntegrationRow[]> {
+    return this.workerDb.db
+      .select()
+      .from(integrations)
+      .where(and(inArray(integrations.provider, providers), eq(integrations.status, 'connected')));
+  }
+
+  /** Marks a connection as failing, outside the caller's transaction so it is kept when that one rolls back. */
+  async markError(integrationId: string, message: string): Promise<void> {
+    await this.workerDb.db
+      .update(integrations)
+      .set({ status: 'error', lastError: message.slice(0, 500), lastErrorAt: new Date(), updatedAt: new Date() })
+      .where(eq(integrations.id, integrationId));
+  }
+
   /** Saves the event and queues it. Returns false when the same event was already received. */
   async store(input: StoreInput): Promise<boolean> {
     const [event] = await this.workerDb.db

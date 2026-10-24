@@ -12,6 +12,7 @@ import { decodeCursor, encodeCursor, Page, PageInfo } from '../../core/http/pagi
 import { QueueService } from '../../core/queue/queue.service';
 import { SECRET_STORE, SecretPaths, SecretStore } from '../../core/secrets/secret-store';
 import { OrganizationService } from '../organization/organization.service';
+import { CALENDAR_OAUTH, CALENDAR_PROVIDERS, CalendarOAuth, CalendarProvider, CalendarTokens } from './adapters/calendar-oauth';
 import { IntegrationRow, integrations, Provider, PROVIDERS, syncRuns, webhookEvents, WebhookEventRow } from './integrations.schema';
 import { mappingErrors } from './inbox/field-mapping';
 import { sha256, WebhookInbox } from './inbox/webhook-inbox';
@@ -42,6 +43,10 @@ export class IntegrationConnectDto {
   @ApiPropertyOptional({ enum: ['tenant', 'user'] }) @IsOptional() @IsIn(['tenant', 'user']) scope?: 'tenant' | 'user';
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) accountLabel?: string;
   @ApiPropertyOptional({ type: Object }) @IsOptional() @IsObject() settings?: Record<string, unknown>;
+}
+
+export class CalendarConnectDto {
+  @ApiProperty({ enum: CALENDAR_PROVIDERS }) @IsIn(CALENDAR_PROVIDERS) provider!: CalendarProvider;
 }
 
 export class ConnectStartDto {
@@ -118,6 +123,7 @@ const SERVER_SETTINGS = ['pageId', 'secretHash', 'webhookUrl', 'inboundUrl', 'wa
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OAUTH_STATE_MINUTES = 10;
+const CALENDAR_NAME: Record<CalendarProvider, string> = { google_workspace: 'Google Calendar', microsoft_365: 'Microsoft 365' };
 
 /**
  * Connections to outside accounts (SRS §11): connect (OAuth), status, last success and errors, records received,
@@ -132,6 +138,7 @@ export class IntegrationsService {
     private readonly paths: SecretPaths,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(META_API) private readonly meta: MetaApi,
+    @Inject(CALENDAR_OAUTH) private readonly calendarOAuth: CalendarOAuth,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly organization: OrganizationService,
     private readonly inbox: WebhookInbox,
@@ -337,6 +344,7 @@ export class IntegrationsService {
    * token in SSM, subscribes the page to lead events. Returns where to send the browser.
    */
   async finishOAuth(provider: string, code: string | undefined, state: string): Promise<string> {
+    if ((CALENDAR_PROVIDERS as string[]).includes(provider)) return this.finishCalendar(provider as CalendarProvider, code, state);
     const back = (q: Record<string, string>) => `${this.config.WEB_APP_URL}/configuration?${new URLSearchParams({ tab: 'integrations', ...q })}`;
     const claims = this.verifyState(state);
     if (!claims || provider !== 'meta') return back({ error: 'invalid_state' });
@@ -395,6 +403,69 @@ export class IntegrationsService {
   }
 
   /** Disconnect: no new data is accepted; the token is removed from SSM; history stays. */
+  /** The signed-in user's own calendars (Google Workspace, Microsoft 365), whatever their permissions. */
+  async myCalendars(p: Principal): Promise<IntegrationDto[]> {
+    const rows = await this.db.current
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.scope, 'user'), eq(integrations.userId, p.userId), inArray(integrations.provider, CALENDAR_PROVIDERS), sql`${integrations.status} <> 'disconnected'`))
+      .orderBy(integrations.provider);
+    return this.toDtos(rows);
+  }
+
+  /**
+   * Starts connecting the user's own calendar: one connection per user and provider, reused when connecting again
+   * (the current one keeps working until the new consent finishes). Returns the provider's consent screen URL.
+   */
+  async connectCalendar(p: Principal, provider: CalendarProvider): Promise<ConnectStartDto> {
+    if (!this.calendarOAuth.configured(provider)) {
+      throw new ProblemException(422, 'INTEGRATION_NOT_CONFIGURED', `${CALENDAR_NAME[provider]} sign-in is not set up`, 'The server has no sign-in app for this provider yet. Ask the platform team.');
+    }
+    const nonce = randomBytes(16).toString('base64url');
+    const [existing] = await this.db.current
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.provider, provider), eq(integrations.scope, 'user'), eq(integrations.userId, p.userId)))
+      .limit(1);
+    const [row] = existing
+      ? await this.db.current
+          .update(integrations)
+          .set({ status: existing.status === 'connected' ? 'connected' : 'pending', settings: { ...existing.settings, oauthNonce: nonce }, updatedAt: new Date() })
+          .where(eq(integrations.id, existing.id))
+          .returning()
+      : await this.db.current
+          .insert(integrations)
+          .values({ tenantId: p.tenantId, provider, scope: 'user', userId: p.userId, accountLabel: CALENDAR_NAME[provider], settings: { oauthNonce: nonce } })
+          .returning();
+    if (!existing) await this.audit.record('create', 'integrations', row!.id, { provider: [null, provider] });
+    const state = this.signState({ t: p.tenantId, i: row!.id, u: p.userId, n: nonce, e: Date.now() + OAUTH_STATE_MINUTES * 60_000 });
+    return { integrationId: row!.id, authorizeUrl: this.calendarOAuth.authorizeUrl(provider, state, this.redirectUri(provider)) };
+  }
+
+  async disconnectCalendar(p: Principal, id: string): Promise<void> {
+    const row = await this.get(id);
+    if (row.scope !== 'user' || row.userId !== p.userId || !(CALENDAR_PROVIDERS as string[]).includes(row.provider)) throw Problems.notFound();
+    await this.disconnect(id);
+  }
+
+  /**
+   * An agent's calendar credentials with a valid access token: refreshed (and saved) shortly before it expires.
+   * When the refresh is refused (access revoked) the connection shows the error and must be connected again.
+   */
+  async calendarCredentials(row: IntegrationRow): Promise<Record<string, string>> {
+    const creds = await this.credentials(row);
+    if (!creds.refreshToken || Number(creds.expiresAt ?? 0) > Date.now() + 120_000) return creds;
+    try {
+      const fresh = await this.calendarOAuth.refresh(row.provider as CalendarProvider, creds.refreshToken);
+      const next = storedTokens({ ...fresh, refreshToken: fresh.refreshToken ?? creds.refreshToken });
+      await this.secrets.put(row.secretRef!, JSON.stringify(next));
+      return next;
+    } catch (err) {
+      await this.inbox.markError(row.id, `Sign-in expired, connect again: ${(err as Error).message}`);
+      throw err;
+    }
+  }
+
   async disconnect(id: string): Promise<void> {
     const row = await this.get(id);
     if (row.secretRef) await this.secrets.delete(row.secretRef);
@@ -537,6 +608,39 @@ export class IntegrationsService {
     });
   }
 
+  /** OAuth callback for an agent's calendar: stores the tokens and returns to Tasks & Calendar. */
+  private async finishCalendar(provider: CalendarProvider, code: string | undefined, state: string): Promise<string> {
+    const back = (q: Record<string, string>) => `${this.config.WEB_APP_URL}/tasks?${new URLSearchParams(q)}`;
+    const claims = this.verifyState(state);
+    if (!claims) return back({ calendarError: 'invalid_state' });
+    return this.db.withTenant(claims.t, async () => {
+      const row = await this.get(claims.i).catch(() => undefined);
+      if (!row || row.provider !== provider || row.userId !== claims.u || row.settings.oauthNonce !== claims.n) return back({ calendarError: 'invalid_state' });
+      const { oauthNonce: _used, ...settings } = row.settings;
+      try {
+        if (!code) throw new Error('Access was not granted');
+        const t = await this.calendarOAuth.exchange(provider, code, this.redirectUri(provider));
+        const email = t.email.toLowerCase();
+        // Another account: its calendar has its own sync cursor.
+        if (row.externalAccountId !== email) delete settings.syncCursor;
+        const secretRef = this.paths.integration(row.tenantId, row.id);
+        await this.secrets.put(secretRef, JSON.stringify(storedTokens(t)));
+        await this.db.current
+          .update(integrations)
+          .set({ status: 'connected', externalAccountId: email, accountLabel: email, secretRef, settings, connectedBy: claims.u, connectedAt: new Date(), lastError: null, updatedAt: new Date() })
+          .where(eq(integrations.id, row.id));
+        await this.audit.record('update', 'integrations', row.id, { status: [row.status, 'connected'] }, claims.u);
+        return back({ calendarConnected: provider });
+      } catch (err) {
+        await this.db.current
+          .update(integrations)
+          .set({ status: row.status === 'connected' ? 'connected' : 'error', settings, lastError: (err as Error).message.slice(0, 500), lastErrorAt: new Date(), updatedAt: new Date() })
+          .where(eq(integrations.id, row.id));
+        return back({ calendarError: 'connection_failed' });
+      }
+    });
+  }
+
   private redirectUri(provider: string): string {
     return `${this.config.PUBLIC_API_URL}/api/v1/oauth/${provider}/callback`;
   }
@@ -581,4 +685,9 @@ function emailExtras(input: Record<string, unknown>, update = false): Record<str
     out[key] = key === 'replyTo' ? raw.toLowerCase() : raw;
   }
   return out;
+}
+
+/** Calendar tokens as kept in the secret store (string values, like every other credential). */
+function storedTokens(t: CalendarTokens): Record<string, string> {
+  return { accessToken: t.accessToken, ...(t.refreshToken ? { refreshToken: t.refreshToken } : {}), expiresAt: String(t.expiresAt) };
 }

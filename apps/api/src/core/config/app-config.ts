@@ -30,6 +30,11 @@ const schema = z
     META_APP_SECRET: z.string().optional(),
     META_VERIFY_TOKEN: z.string().optional(),
     META_GRAPH_VERSION: z.string().default('v21.0'),
+    /** OAuth apps for the agents' own calendars (Google Meet / Teams links and two-way sync); unset = cannot connect. */
+    GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+    GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+    MICROSOFT_OAUTH_CLIENT_ID: z.string().optional(),
+    MICROSOFT_OAUTH_CLIENT_SECRET: z.string().optional(),
     /** crm_platform (owner console, Stripe webhooks, billing records; architecture §6.3). */
     PLATFORM_DATABASE_URL: z.string().url().optional(),
     /** Owner console login: its own Cognito user pool (two-factor). Dev mode signs platform tokens locally. */

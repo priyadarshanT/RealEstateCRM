@@ -11,6 +11,7 @@ import { apiDateRange, rangeFor, sameDay, shift, type CalendarView } from './cal
 import { TaskChip } from './task-chip';
 import { TaskDetailDialog } from './task-detail-dialog';
 import { BookingPageEditor } from '@/features/calendar/booking-page-editor';
+import { MyCalendarsButton } from '@/features/calendar/my-calendars';
 import { TaskDialog } from './task-dialog';
 import { TASK_TYPE_LABEL, useTasks, type Task } from './tasks-api';
 
@@ -114,6 +115,7 @@ export function TasksScreen() {
         </Select>
         <span className="ml-auto" />
         {overdue.data?.data.length ? <Badge tone="danger">{overdue.data.data.length} overdue</Badge> : null}
+        <MyCalendarsButton />
         <Button variant="outline" size="sm" onClick={() => setBookingPage(true)}>
           <CalendarClock /> My booking page
         </Button>

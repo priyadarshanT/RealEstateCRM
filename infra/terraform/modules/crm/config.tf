@@ -51,7 +51,10 @@ locals {
     OAUTH_STATE_SECRET     = random_password.oauth_state.result
   }
   # Set by hand once the outside accounts exist (aws ssm put-parameter ... --overwrite).
-  api_manual = ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "TURNSTILE_SECRET", "META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"]
+  api_manual = [
+    "STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "TURNSTILE_SECRET", "META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN",
+    "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "MICROSOFT_OAUTH_CLIENT_ID", "MICROSOFT_OAUTH_CLIENT_SECRET",
+  ]
   # Public, but set by hand with its secret: the Cloudflare Turnstile widget's site key.
   web_manual = ["TURNSTILE_SITE_KEY"]
 

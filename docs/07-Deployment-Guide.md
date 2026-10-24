@@ -141,6 +141,8 @@ aws ssm put-parameter --region eu-north-1 --name /crm/production/api/<NAME> --ty
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` | Stripe → Developers → API keys | Sign-up, billing |
 | `STRIPE_WEBHOOK_SECRET` | Stripe → Webhooks → endpoint `https://api.crm.example.ae/api/v1/webhooks/stripe` | Payment events |
 | `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN` | Meta for Developers app | Lead ads, WhatsApp |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google Cloud → APIs & Services: enable the Google Calendar API; OAuth consent screen (scopes `openid`, `email`, `calendar.events`); OAuth client "Web application" with redirect URI `https://api.example.ae/api/v1/oauth/google_workspace/callback` | Agents connect Google Calendar (Tasks & Calendar → My calendars): Meet links and two-way sync |
+| `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET` | Microsoft Entra → App registrations: accounts in any organization; redirect URI (Web) `https://api.example.ae/api/v1/oauth/microsoft_365/callback`; delegated permissions `User.Read`, `Calendars.ReadWrite`, `OnlineMeetings.ReadWrite`, `offline_access`; a client secret | Agents connect Microsoft 365: Teams links and two-way sync |
 
 After changing settings, run the deploy again (step 5, `send-command` only) so the containers read them.
 

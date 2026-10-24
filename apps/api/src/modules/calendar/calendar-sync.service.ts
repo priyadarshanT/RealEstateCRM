@@ -1,8 +1,9 @@
-import { Controller, Headers, HttpCode, Inject, Injectable, OnModuleInit, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Controller, Headers, HttpCode, Inject, Injectable, Logger, OnModuleInit, Param, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { Public } from '../../core/auth/decorators';
+import { DbService } from '../../core/database/db.service';
 import { Problems } from '../../core/errors/problem';
 import { QueueService } from '../../core/queue/queue.service';
 import { InboxJob, WebhookAck, WebhookInbox } from '../integrations/inbox/webhook-inbox';
@@ -16,10 +17,15 @@ const CALENDAR_NAME = { google_workspace: 'Google Calendar', microsoft_365: 'Mic
 /**
  * calendar-sync job (SRS §3.13): after a push notification from the agent's calendar, reads the changes since the
  * last sync and applies them to the CRM meetings; the provider's cursor is kept on the connection.
+ * calendar-check (every 10 minutes) does the same for every connected calendar, so changes arrive even without
+ * push notifications.
  */
 @Injectable()
 export class CalendarSyncService implements OnModuleInit {
+  private readonly logger = new Logger(CalendarSyncService.name);
+
   constructor(
+    private readonly db: DbService,
     private readonly queue: QueueService,
     private readonly inbox: WebhookInbox,
     private readonly integrations: IntegrationsService,
@@ -29,6 +35,18 @@ export class CalendarSyncService implements OnModuleInit {
 
   onModuleInit(): void {
     this.queue.register<InboxJob>('calendar-sync', (job) => this.process(job.webhookEventId));
+    this.queue.register('calendar-check', () => this.checkAll(), { cron: '*/10 * * * *' });
+  }
+
+  /** Syncs every connected calendar; one failing account (e.g. access revoked) does not stop the others. */
+  async checkAll(): Promise<void> {
+    for (const integration of await this.inbox.connectedAccounts(['google_workspace', 'microsoft_365'])) {
+      try {
+        await this.db.withTenant(integration.tenantId, () => this.sync(integration));
+      } catch (err) {
+        this.logger.warn(`Calendar check for connection ${integration.id} failed: ${(err as Error).message}`);
+      }
+    }
   }
 
   process(eventId: string): Promise<void> {
@@ -38,7 +56,7 @@ export class CalendarSyncService implements OnModuleInit {
   async sync(integration: IntegrationRow): Promise<void> {
     if (integration.provider !== 'google_workspace' && integration.provider !== 'microsoft_365') return;
     const cursor = typeof integration.settings.syncCursor === 'string' ? integration.settings.syncCursor : undefined;
-    const result = await this.calendars.changes({ provider: integration.provider, settings: integration.settings, credentials: await this.integrations.credentials(integration) }, cursor);
+    const result = await this.calendars.changes({ provider: integration.provider, settings: integration.settings, credentials: await this.integrations.calendarCredentials(integration) }, cursor);
     for (const change of result.changes) await this.meetings.applyExternalChange(change, CALENDAR_NAME[integration.provider]);
     if (result.cursor && result.cursor !== cursor) await this.integrations.saveSettings(integration.id, { syncCursor: result.cursor });
   }

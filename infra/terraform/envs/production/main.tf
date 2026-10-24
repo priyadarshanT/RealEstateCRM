@@ -47,7 +47,7 @@ variable "mail_from" { type = string }
 variable "alert_emails" { type = list(string) }
 variable "monthly_budget_usd" {
   type    = number
-  default = 25
+  default = 20
 }
 
 output "crm" {

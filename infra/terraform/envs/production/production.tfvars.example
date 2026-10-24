@@ -5,4 +5,4 @@ api_domain         = "api.crm.example.ae"
 mail_domain        = "example.ae"
 mail_from          = "Dubai Real Estate CRM <no-reply@example.ae>"
 alert_emails       = ["it@example.ae"]
-monthly_budget_usd = 25
+monthly_budget_usd = 20

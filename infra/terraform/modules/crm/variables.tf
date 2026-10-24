@@ -45,7 +45,7 @@ variable "alert_emails" {
 variable "monthly_budget_usd" {
   description = "Monthly AWS budget; an email is sent at 80% of actual and 100% of forecast spend."
   type        = number
-  default     = 25
+  default     = 20
 }
 
 variable "image_tag" {

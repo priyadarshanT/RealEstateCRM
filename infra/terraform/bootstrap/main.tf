@@ -48,7 +48,7 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-# Container images (built by .github/workflows/deploy.yml, tagged with the source tree hash).
+# Container images (built by .github/workflows/deploy-production.yml, tagged with the source tree hash).
 resource "aws_ecr_repository" "app" {
   for_each             = toset(["api", "web"])
   name                 = "crm/${each.key}"
@@ -76,11 +76,70 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
-# GitHub Actions sign-in. Each environment's module creates its own deploy role that trusts this provider for
-# that GitHub environment only (modules/crm/pipeline.tf).
+# GitHub Actions sign-in. The AWS Free plan blocks OIDC providers, so until the account leaves it the pipeline
+# signs in with the deploy user below (docs/07-Deployment-Guide.md, Known gaps). After leaving the Free plan:
+# set github_oidc = true, apply, move the pipeline to OIDC, then delete the deploy user's access key.
+variable "github_oidc" {
+  description = "Create the GitHub OIDC provider (not allowed on the AWS Free plan)."
+  type        = bool
+  default     = false
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
+  count          = var.github_oidc ? 1 : 0
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
+}
+
+# Temporary pipeline user (Free plan only). It can push the two images, set IMAGE_TAG and run the
+# crm-<env>-deploy document on the CRM servers; nothing else. Its access key is created in the AWS console
+# and stored only as a GitHub environment secret.
+resource "aws_iam_user" "github_deploy" {
+  count = var.github_oidc ? 0 : 1
+  name  = "crm-github-deploy"
+  tags  = { Project = "crm" }
+}
+
+resource "aws_iam_user_policy" "github_deploy" {
+  count = var.github_oidc ? 0 : 1
+  name  = "deploy"
+  user  = aws_iam_user.github_deploy[0].name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Sid = "EcrLogin", Effect = "Allow", Action = "ecr:GetAuthorizationToken", Resource = "*" },
+      {
+        Sid    = "EcrPush"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload", "ecr:DescribeImages",
+          "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart",
+        ]
+        Resource = [for r in aws_ecr_repository.app : r.arn]
+      },
+      {
+        Sid      = "ImageTag"
+        Effect   = "Allow"
+        Action   = "ssm:PutParameter"
+        Resource = "arn:aws:ssm:eu-north-1:${data.aws_caller_identity.current.account_id}:parameter/crm/*/deploy/IMAGE_TAG"
+      },
+      { Sid = "FindServers", Effect = "Allow", Action = "ec2:DescribeInstances", Resource = "*" },
+      {
+        Sid      = "DeployDocument"
+        Effect   = "Allow"
+        Action   = "ssm:SendCommand"
+        Resource = "arn:aws:ssm:eu-north-1:${data.aws_caller_identity.current.account_id}:document/crm-*-deploy"
+      },
+      {
+        Sid       = "DeployServers"
+        Effect    = "Allow"
+        Action    = "ssm:SendCommand"
+        Resource  = "arn:aws:ec2:eu-north-1:${data.aws_caller_identity.current.account_id}:instance/*"
+        Condition = { StringEquals = { "ssm:resourceTag/Project" = "crm" } }
+      },
+      { Sid = "DeployResult", Effect = "Allow", Action = ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"], Resource = "*" },
+    ]
+  })
 }
 
 output "state_bucket" {

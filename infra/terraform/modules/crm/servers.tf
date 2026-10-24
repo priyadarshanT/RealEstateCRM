@@ -96,8 +96,9 @@ resource "aws_instance" "app" {
     encrypted   = true
   }
 
+  # "standard": a busy server slows down instead of buying extra CPU credits (keeps the bill fixed).
   credit_specification {
-    cpu_credits = "unlimited"
+    cpu_credits = "standard"
   }
 
   lifecycle {
@@ -153,4 +154,24 @@ resource "aws_dlm_lifecycle_policy" "daily" {
     }
   }
   tags = local.tags
+}
+
+# The only command the pipeline may run on the servers: deploy one image tag (letters and digits only).
+resource "aws_ssm_document" "deploy" {
+  name            = "${local.name}-deploy"
+  document_type   = "Command"
+  document_format = "JSON"
+  tags            = local.tags
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Deploy an image tag of the CRM (runs /opt/crm/deploy.sh)."
+    parameters = {
+      tag = { type = "String", description = "Image tag", allowedPattern = "^[0-9a-f]{7,40}$" }
+    }
+    mainSteps = [{
+      action = "aws:runShellScript"
+      name   = "deploy"
+      inputs = { runCommand = ["/opt/crm/deploy.sh {{ tag }}"], timeoutSeconds = "1200" }
+    }]
+  })
 }

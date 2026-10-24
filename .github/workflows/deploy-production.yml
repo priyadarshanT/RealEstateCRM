@@ -1,0 +1,98 @@
+# Release to production: push to the `production` branch (or run by hand). CI runs first; the deploy job then
+# waits for approval in the `production` GitHub environment, builds the arm64 images, pushes them to ECR and
+# runs the crm-production-deploy command on the server (pulls images, runs migrations, restarts containers).
+#
+# GitHub settings (once): environment `production` with a required reviewer and deployment branch `production`,
+# and the environment secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY of the crm-github-deploy user.
+# That user is temporary (AWS Free plan); move to OIDC afterwards (docs/07-Deployment-Guide.md, Known gaps).
+name: Deploy production
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  ENVIRONMENT: production
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    if: github.ref == 'refs/heads/production'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: https://crm.leadkeeda.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image tag (source tree hash, so an unchanged tree is not rebuilt)
+        id: tag
+        run: echo "tag=$(git rev-parse --short=12 HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push images
+        env:
+          REG: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for app in api web; do
+            if aws ecr describe-images --repository-name "crm/$app" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "crm/$app:$TAG already in ECR"
+              continue
+            fi
+            docker build -f "docker/$app.Dockerfile" -t "$REG/crm/$app:$TAG" .
+            docker push "$REG/crm/$app:$TAG"
+          done
+
+      - name: Deploy on the server
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          aws ssm put-parameter --name "/crm/$ENVIRONMENT/deploy/IMAGE_TAG" --type String --overwrite --value "$TAG" >/dev/null
+          IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:Project,Values=crm" "Name=tag:Environment,Values=$ENVIRONMENT" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          [ -n "$IDS" ] || { echo "No running $ENVIRONMENT server"; exit 1; }
+          CMD=$(aws ssm send-command --document-name "crm-$ENVIRONMENT-deploy" --instance-ids $IDS \
+            --parameters "tag=$TAG" --query Command.CommandId --output text)
+          echo "command $CMD on $IDS"
+          for id in $IDS; do
+            STATUS=Pending
+            for i in $(seq 1 120); do   # up to 20 minutes, the document's own timeout
+              sleep 10
+              OUT=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$id" 2>/dev/null) || continue
+              STATUS=$(echo "$OUT" | jq -r .Status)
+              case "$STATUS" in Pending|InProgress|Delayed) ;; *) break ;; esac
+            done
+            echo "$OUT" | jq -r '.StandardOutputContent, .StandardErrorContent'
+            [ "$STATUS" = "Success" ] || { echo "Deploy on $id ended with status $STATUS"; exit 1; }
+          done
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 18); do
+            if curl -fsS https://api.crm.leadkeeda.com/health; then echo; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::https://api.crm.leadkeeda.com/health did not answer (Cloudflare Tunnel not set up yet?)"

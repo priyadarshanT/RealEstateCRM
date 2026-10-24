@@ -1,8 +1,9 @@
 # Copy to production.tfvars and fill in. Not secret, but kept out of git so each environment owns its values.
 size               = "starter"
 web_domain         = "crm.example.ae"
-api_domain         = "api.crm.example.ae"
+api_domain         = "api.example.ae"
 mail_domain        = "example.ae"
 mail_from          = "Dubai Real Estate CRM <no-reply@example.ae>"
+lead_email_domain  = "leads.example.ae"
 alert_emails       = ["it@example.ae"]
 monthly_budget_usd = 20

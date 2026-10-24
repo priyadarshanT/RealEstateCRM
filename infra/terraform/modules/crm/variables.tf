@@ -37,6 +37,12 @@ variable "mail_from" {
   type        = string
 }
 
+variable "lead_email_domain" {
+  description = "Domain that receives portal lead emails (e.g. leads.example.ae); empty turns lead email receiving off."
+  type        = string
+  default     = ""
+}
+
 variable "alert_emails" {
   description = "Email addresses that receive alarms and budget alerts."
   type        = list(string)

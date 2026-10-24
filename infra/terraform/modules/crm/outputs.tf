@@ -38,3 +38,11 @@ output "tunnel_routes" {
   description = "Public hostnames to add to the Cloudflare Tunnel."
   value       = { (var.web_domain) = "http://web:3000", (var.api_domain) = "http://api:4000" }
 }
+
+output "lead_email_dns" {
+  description = "Cloudflare DNS for portal lead emails (all DNS only): the MX record and three DKIM CNAMEs."
+  value = local.lead_email == 0 ? [] : concat(
+    ["${var.lead_email_domain} MX 10 inbound-smtp.${data.aws_region.current.region}.amazonaws.com"],
+    [for t in aws_sesv2_email_identity.lead_email[0].dkim_signing_attributes[0].tokens : "${t}._domainkey.${var.lead_email_domain} CNAME ${t}.dkim.amazonses.com"],
+  )
+}

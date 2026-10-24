@@ -117,6 +117,15 @@ Check: `https://crm.example.ae/login` opens the Cognito sign-in page, and `https
 
 Until production access is granted, SES only delivers to addresses you verified yourself, so invitations to real users do not arrive.
 
+### Portal lead emails (receiving)
+
+With `lead_email_domain` set (e.g. `leads.example.ae`), SES receives mail for that domain and passes it to the API, which files each email under the portal connection whose **Lead email address** matches the To address.
+
+1. Add the four records from the `lead_email_dns` output in Cloudflare DNS, all **DNS only**: one `MX` (priority 10) and three DKIM `CNAME`s.
+2. In the CRM, each company enters an address on that domain in its portal connection (Global Configuration → Integration → Property Finder / Bayut / Dubizzle), e.g. `skyline@leads.example.ae`, and gives it to the portal (or forwards the portal's lead emails to it).
+
+The SNS subscription is confirmed by the API itself, so the API must answer on `api_domain` when Terraform creates it.
+
 ## 7. Outside services (set when the accounts exist)
 
 Terraform creates these as `unset`; the app runs without them, and the related feature reports that it is not configured.
